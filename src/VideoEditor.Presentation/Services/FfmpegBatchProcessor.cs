@@ -51,7 +51,7 @@ namespace VideoEditor.Presentation.Services
             /// <summary>
             /// 执行任务的函数
             /// </summary>
-            public Func<string, string, CancellationToken, Task<VideoProcessingResult>> ExecuteTask { get; set; } = null!;
+            public Func<string, string, Action<double>, CancellationToken, Task<VideoProcessingResult>> ExecuteTask { get; set; } = null!;
 
             /// <summary>
             /// 预计处理时长（用于进度估算，可选）
@@ -90,9 +90,14 @@ namespace VideoEditor.Presentation.Services
             public Action<string, string, string, string>? UpdateStatusBar { get; set; }
 
             /// <summary>
-            /// 进度条更新回调
+            /// 进度条更新回调 (总进度)
             /// </summary>
             public Action<double, string>? UpdateProgress { get; set; }
+
+            /// <summary>
+            /// 单个文件进度更新回调
+            /// </summary>
+            public Action<double, string>? UpdateFileProgress { get; set; }
 
             /// <summary>
             /// 日志追加回调
@@ -147,7 +152,8 @@ namespace VideoEditor.Presentation.Services
             _dispatcher.Invoke(() =>
             {
                 config.SwitchToLogTab?.Invoke();
-                config.UpdateProgress?.Invoke(0, "准备开始...");
+                config.UpdateProgress?.Invoke(0, $"0/{tasks.Count} | 0%");
+                config.UpdateFileProgress?.Invoke(0, "准备开始...");
 
                 var logHeader = $"{config.OperationIcon} 开始{config.OperationName}\r\n" +
                                $"📊 待处理任务数: {tasks.Count}\r\n";
@@ -174,6 +180,7 @@ namespace VideoEditor.Presentation.Services
                     {
                         config.AppendLog?.Invoke("\r\n⚠️ 批量操作已取消\r\n");
                         config.UpdateStatusBar?.Invoke("操作已取消", "⚠️", "#FF9800", "空闲");
+                        config.UpdateFileProgress?.Invoke(0, "已取消");
                     });
                     break;
                 }
@@ -192,12 +199,21 @@ namespace VideoEditor.Presentation.Services
                     {
                         config.AppendLog?.Invoke($"📁 输出: {Path.GetFileName(task.OutputPath)}\r\n");
                     }
+
+                    // 重置单个文件进度
+                    config.UpdateFileProgress?.Invoke(0, "正在初始化...");
                 });
 
                 try
                 {
-                    // 执行任务
-                    var taskResult = await task.ExecuteTask(task.InputPath, task.OutputPath, cancellationToken);
+                    // 执行任务，传入单个文件进度回调
+                    var taskResult = await task.ExecuteTask(task.InputPath, task.OutputPath, (p) => 
+                    {
+                        _dispatcher.Invoke(() => 
+                        {
+                            config.UpdateFileProgress?.Invoke(p * 100, $"{p * 100:F1}%");
+                        });
+                    }, cancellationToken);
 
                     var taskProcessingTime = DateTime.Now - taskStartTime;
 
@@ -222,6 +238,7 @@ namespace VideoEditor.Presentation.Services
                                 }
                             }
                             config.AppendLog?.Invoke($"{successMessage}\r\n");
+                            config.UpdateFileProgress?.Invoke(100, "已完成");
                         });
                     }
                     else
@@ -230,15 +247,16 @@ namespace VideoEditor.Presentation.Services
                         _dispatcher.Invoke(() =>
                         {
                             config.AppendLog?.Invoke($"❌ 失败 | 错误: {taskResult.ErrorMessage}\r\n");
+                            config.UpdateFileProgress?.Invoke(0, "失败");
                         });
                     }
 
-                    // 更新进度
+                    // 更新总进度
                     var overallProgress = (double)processedCount / tasks.Count;
                     _dispatcher.Invoke(() =>
                     {
                         var elapsed = DateTime.Now - batchStartTime;
-                        var progressText = $"{overallProgress * 100:F1}% | {elapsed.TotalSeconds:F1}s | {task.TaskId}";
+                        var progressText = $"{processedCount}/{tasks.Count} | {overallProgress * 100:F0}%";
                         config.UpdateProgress?.Invoke(overallProgress * 100, progressText);
                     });
                 }

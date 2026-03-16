@@ -17,6 +17,7 @@ namespace VideoEditor.Presentation.Services
     {
         private string? _ffmpegPath;
         private readonly VideoInformationService _videoInformationService;
+        public event Action<string>? FfmpegLogReceived;
 
         public VideoProcessingService()
         {
@@ -1455,6 +1456,100 @@ namespace VideoEditor.Presentation.Services
             return $"{totalHours:D2}:{minutes:D2}:{seconds:D2}.{milliseconds:D3}";
         }
 
+        private static void TryReportProgressFromLine(string line, double totalSeconds, Action<double>? progressCallback)
+        {
+            if (progressCallback == null || totalSeconds <= 0 || string.IsNullOrWhiteSpace(line))
+            {
+                return;
+            }
+
+            if (line.StartsWith("out_time_us=", StringComparison.OrdinalIgnoreCase))
+            {
+                var valueText = line.Substring("out_time_us=".Length).Trim();
+                if (long.TryParse(valueText, out var outTimeUs))
+                {
+                    var currentSeconds = outTimeUs / 1_000_000d;
+                    var progress = Math.Min(Math.Max(currentSeconds / totalSeconds, 0), 0.99);
+                    progressCallback(progress);
+                }
+                return;
+            }
+
+            if (line.StartsWith("out_time_ms=", StringComparison.OrdinalIgnoreCase))
+            {
+                var valueText = line.Substring("out_time_ms=".Length).Trim();
+                if (long.TryParse(valueText, out var outTimeMs))
+                {
+                    var currentSeconds = outTimeMs > 1_000_000 ? outTimeMs / 1_000_000d : outTimeMs / 1000d;
+                    var progress = Math.Min(Math.Max(currentSeconds / totalSeconds, 0), 0.99);
+                    progressCallback(progress);
+                }
+                return;
+            }
+
+            var match = System.Text.RegularExpressions.Regex.Match(line, @"time=(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?");
+            if (match.Success)
+            {
+                var hours = int.Parse(match.Groups[1].Value);
+                var minutes = int.Parse(match.Groups[2].Value);
+                var seconds = int.Parse(match.Groups[3].Value);
+                var fractionText = match.Groups[4].Success ? match.Groups[4].Value : "0";
+                if (fractionText.Length > 3)
+                {
+                    fractionText = fractionText[..3];
+                }
+                while (fractionText.Length < 3)
+                {
+                    fractionText += "0";
+                }
+                var milliseconds = int.Parse(fractionText);
+
+                var currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
+                var progress = Math.Min(Math.Max(currentTime.TotalSeconds / totalSeconds, 0), 0.99);
+                progressCallback(progress);
+            }
+        }
+
+        private static bool TryExtractDurationSecondsFromLine(string line, out double totalSeconds)
+        {
+            totalSeconds = 0;
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            var match = System.Text.RegularExpressions.Regex.Match(line, @"Duration:\s*(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?");
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            var hours = int.Parse(match.Groups[1].Value);
+            var minutes = int.Parse(match.Groups[2].Value);
+            var seconds = int.Parse(match.Groups[3].Value);
+            var fractionText = match.Groups[4].Success ? match.Groups[4].Value : "0";
+            if (fractionText.Length > 3)
+            {
+                fractionText = fractionText[..3];
+            }
+            while (fractionText.Length < 3)
+            {
+                fractionText += "0";
+            }
+            var milliseconds = int.Parse(fractionText);
+            totalSeconds = new TimeSpan(0, hours, minutes, seconds, milliseconds).TotalSeconds;
+            return totalSeconds > 0;
+        }
+
+        private void EmitFfmpegLogLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return;
+            }
+            FfmpegLogReceived?.Invoke(line);
+        }
+
         /// <summary>
         /// 执行FFmpeg命令 - 极简化版本使用cmd.exe
         /// </summary>
@@ -1471,8 +1566,31 @@ namespace VideoEditor.Presentation.Services
 
             try
             {
+                // 检查取消状态
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    Services.DebugLogger.LogWarning("FFmpeg 执行前检测到取消信号");
+                    result.Success = false;
+                    result.ErrorMessage = "操作被取消";
+                    return result;
+                }
+
+                if (!arguments.Contains("-progress", StringComparison.OrdinalIgnoreCase))
+                {
+                    arguments = $"-progress pipe:1 -nostats {arguments}";
+                }
+
                 // 直接执行FFmpeg，避免cmd.exe开销
-                Debug.WriteLine($"执行FFmpeg命令: {_ffmpegPath} {arguments}");
+                Services.DebugLogger.LogInfo($"准备执行 FFmpeg: {_ffmpegPath}");
+                Services.DebugLogger.LogInfo($"FFmpeg 完整命令: \"{_ffmpegPath}\" {arguments}");
+
+                if (string.IsNullOrEmpty(_ffmpegPath) || !File.Exists(_ffmpegPath))
+                {
+                    result.Success = false;
+                    result.ErrorMessage = "FFmpeg 路径无效或文件不存在";
+                    Services.DebugLogger.LogError(result.ErrorMessage);
+                    return result;
+                }
 
                 using var process = new Process
                 {
@@ -1482,39 +1600,71 @@ namespace VideoEditor.Presentation.Services
                         Arguments = arguments,
                         UseShellExecute = false,
                         CreateNoWindow = true,
-                        RedirectStandardError = false,
-                        RedirectStandardOutput = false,
+                        RedirectStandardError = true,
+                        RedirectStandardOutput = true,
                         WorkingDirectory = Path.GetDirectoryName(_ffmpegPath) ?? string.Empty
+                    }
+                };
+
+                var stderr = new System.Text.StringBuilder();
+                var stdout = new System.Text.StringBuilder();
+                var totalSeconds = totalDuration?.TotalSeconds ?? 0;
+                process.ErrorDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                    {
+                        stderr.AppendLine(e.Data);
+                        EmitFfmpegLogLine(e.Data);
+                        if (totalSeconds <= 0 && TryExtractDurationSecondsFromLine(e.Data, out var parsedDurationSeconds))
+                        {
+                            totalSeconds = parsedDurationSeconds;
+                            Services.DebugLogger.LogInfo($"从 FFmpeg 日志识别总时长: {totalSeconds:F3} 秒");
+                        }
+                        TryReportProgressFromLine(e.Data, totalSeconds, progressCallback);
+                    }
+                };
+
+                process.OutputDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                    {
+                        stdout.AppendLine(e.Data);
+                        EmitFfmpegLogLine(e.Data);
+                        if (totalSeconds <= 0 && TryExtractDurationSecondsFromLine(e.Data, out var parsedDurationSeconds))
+                        {
+                            totalSeconds = parsedDurationSeconds;
+                            Services.DebugLogger.LogInfo($"从 FFmpeg 输出识别总时长: {totalSeconds:F3} 秒");
+                        }
+                        TryReportProgressFromLine(e.Data, totalSeconds, progressCallback);
                     }
                 };
 
                 // 启动进程
                 process.Start();
-                Debug.WriteLine($"进程已启动，PID: {process.Id}");
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                Services.DebugLogger.LogInfo($"进程已启动，PID: {process.Id}");
 
-                // 简单的进度模拟（基于时间估算）
-                var startTime = DateTime.Now;
-                var estimatedDuration = totalDuration?.TotalSeconds ?? 60; // 默认60秒
-
-                // 异步进度更新 - 降低频率避免UI阻塞
-                var progressTask = Task.Run(async () =>
+                // 进度解析逻辑
+                Services.DebugLogger.LogInfo($"视频总时长: {totalDuration} ({totalSeconds} 秒)");
+                if (totalSeconds <= 0)
                 {
-                    try
+                    Services.DebugLogger.LogWarning("无法获取视频总时长，将使用模拟进度");
+                    _ = Task.Run(async () =>
                     {
-                        while (!process.HasExited && !cancellationToken.IsCancellationRequested)
+                        try
                         {
-                            var elapsed = (DateTime.Now - startTime).TotalSeconds;
-                            var progress = Math.Min(elapsed / estimatedDuration, 0.95);
-                            progressCallback?.Invoke(progress);
-                            await Task.Delay(2000, cancellationToken); // 每2秒更新一次
+                            double mockProgress = 0;
+                            while (!process.HasExited && !cancellationToken.IsCancellationRequested)
+                            {
+                                mockProgress = Math.Min(mockProgress + 0.01, 0.95);
+                                progressCallback?.Invoke(mockProgress);
+                                await Task.Delay(2000, cancellationToken);
+                            }
                         }
-                        if (!cancellationToken.IsCancellationRequested)
-                        {
-                            progressCallback?.Invoke(1.0);
-                        }
-                    }
-                    catch (OperationCanceledException) { }
-                }, cancellationToken);
+                        catch { }
+                    }, cancellationToken);
+                }
 
                 // 等待进程完成或取消
                 var exitTask = process.WaitForExitAsync(cancellationToken);
@@ -1526,31 +1676,35 @@ namespace VideoEditor.Presentation.Services
                 catch (OperationCanceledException)
                 {
                     try { process.Kill(); } catch { }
+                    Services.DebugLogger.LogWarning($"FFmpeg执行被取消，PID: {process.Id}");
                     result.Success = false;
                     result.ErrorMessage = "操作被取消";
                     return result;
                 }
 
-                // 等待进度任务完成
-                await progressTask;
-
                 if (process.ExitCode == 0)
                 {
                     result.Success = true;
-                    Debug.WriteLine("FFmpeg执行成功");
+                    progressCallback?.Invoke(1.0);
+                    Services.DebugLogger.LogSuccess("FFmpeg执行成功");
                 }
                 else
                 {
                     result.Success = false;
-                    result.ErrorMessage = $"FFmpeg执行失败 (退出码: {process.ExitCode})";
-                    Debug.WriteLine($"FFmpeg执行失败，退出码: {process.ExitCode}");
+                    var errorOutput = stderr.ToString();
+                    // 提取最后几行错误信息，通常最有价值
+                    var lines = errorOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    var lastLines = lines.Length > 5 ? string.Join("\n", lines.TakeLast(5)) : errorOutput;
+                    
+                    result.ErrorMessage = $"FFmpeg执行失败 (退出码: {process.ExitCode})\n{lastLines}";
+                    Services.DebugLogger.LogError($"FFmpeg执行失败，退出码: {process.ExitCode}\n完整错误详情:\n{errorOutput}\n标准输出:\n{stdout}");
                 }
             }
             catch (Exception ex)
             {
                 result.Success = false;
                 result.ErrorMessage = $"执行异常: {ex.Message}";
-                Debug.WriteLine($"执行异常: {ex.Message}");
+                Services.DebugLogger.LogError($"执行异常: {ex.Message}");
             }
 
             return result;

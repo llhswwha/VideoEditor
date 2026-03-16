@@ -3260,36 +3260,71 @@
                                 <Border Grid.Row="1"
                                         Background="#2D2D30"
                                         Padding="8,5">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <TextBlock Text="进度:"
-                                               Foreground="#999" 
-                                               Margin="0,0,8,0" VerticalAlignment="Center" FontSize="10"/>
-                                    <ProgressBar Grid.Column="1" Name="ExecutionProgressBar" 
-                                                 Height="16" Minimum="0" Maximum="100" Value="0"
-                                                 Foreground="#4CAF50"
-                                                 Background="#37474F"
-                                                 BorderBrush="#37474F"
-                                                 Style="{x:Null}">
-                                        <ProgressBar.Template>
-                                            <ControlTemplate TargetType="ProgressBar">
-                                                <Border x:Name="PART_Track" Background="#37474F" BorderThickness="0" CornerRadius="2">
-                                                    <Border x:Name="PART_Indicator" Background="#4CAF50" HorizontalAlignment="Left" CornerRadius="2"/>
-                                                </Border>
-                                            </ControlTemplate>
-                                        </ProgressBar.Template>
-                                    </ProgressBar>
-                                    <TextBlock Grid.Column="2" Name="ProgressInfoText" 
-                                               Text="0% | 0.0x | 00:00" 
-                                               Foreground="#999" Margin="8,0,0,0"
-                                               FontFamily="Consolas" FontSize="10"
-                                               VerticalAlignment="Center"/>
-                                </Grid>
+                                    <StackPanel>
+                                        <!-- 总进度 -->
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <TextBlock Text="总进度:"
+                                                       Foreground="#999" 
+                                                       Margin="0,0,8,0" VerticalAlignment="Center" FontSize="10"/>
+                                            <ProgressBar Grid.Column="1" Name="ExecutionProgressBar" 
+                                                         Height="12" Minimum="0" Maximum="100" Value="0"
+                                                         Foreground="#4CAF50"
+                                                         Background="#37474F"
+                                                         BorderBrush="#37474F"
+                                                         Style="{x:Null}">
+                                                <ProgressBar.Template>
+                                                    <ControlTemplate TargetType="ProgressBar">
+                                                        <Border x:Name="PART_Track" Background="#37474F" BorderThickness="0" CornerRadius="2">
+                                                            <Border x:Name="PART_Indicator" Background="#4CAF50" HorizontalAlignment="Left" CornerRadius="2"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </ProgressBar.Template>
+                                            </ProgressBar>
+                                            <TextBlock Grid.Column="2" Name="ProgressInfoText" 
+                                                       Text="0/0 | 0%" 
+                                                       Foreground="#999" Margin="8,0,0,0"
+                                                       FontFamily="Consolas" FontSize="10"
+                                                       VerticalAlignment="Center"/>
+                                        </Grid>
+
+                                        <!-- 单个文件进度 -->
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="当前文件:"
+                                                       Foreground="#999" 
+                                                       Margin="0,0,8,0" VerticalAlignment="Center" FontSize="10"/>
+                                            <ProgressBar Grid.Column="1" Name="FileProgressBar" 
+                                                         Height="12" Minimum="0" Maximum="100" Value="0"
+                                                         Foreground="#2196F3"
+                                                         Background="#37474F"
+                                                         BorderBrush="#37474F"
+                                                         Style="{x:Null}">
+                                                <ProgressBar.Template>
+                                                    <ControlTemplate TargetType="ProgressBar">
+                                                        <Border x:Name="PART_Track" Background="#37474F" BorderThickness="0" CornerRadius="2">
+                                                            <Border x:Name="PART_Indicator" Background="#2196F3" HorizontalAlignment="Left" CornerRadius="2"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </ProgressBar.Template>
+                                            </ProgressBar>
+                                            <TextBlock Grid.Column="2" Name="FileProgressText" 
+                                                       Text="0.0%" 
+                                                       Foreground="#999" Margin="8,0,0,0"
+                                                       FontFamily="Consolas" FontSize="10"
+                                                       VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </StackPanel>
                                 </Border>
                                 
                                 <!-- 控制按钮 -->
@@ -3450,6 +3485,48 @@
                                             Width="150"
                                             Click="BtnClearFinishedTasks_Click"/>
                                 </StackPanel>
+                            </Grid>
+                        </TabItem>
+
+                        <TabItem x:Name="FfmpegLogTabItem" Header="📜 FFmpeg日志">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0"
+                                        Background="#0F111A"
+                                        BorderBrush="#333"
+                                        BorderThickness="1"
+                                        Padding="10">
+                                    <TextBox Name="FfmpegLogOutputBox"
+                                             FontFamily="Consolas"
+                                             FontSize="10"
+                                             Background="#0F111A"
+                                             Foreground="#D5DBE3"
+                                             BorderThickness="0"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Auto"
+                                             Style="{x:Null}"
+                                             Text="FFmpeg实时日志输出..."/>
+                                </Border>
+                                <Border Grid.Row="1"
+                                        Background="#2D2D30"
+                                        BorderBrush="#3F3F46"
+                                        BorderThickness="0,1,0,0"
+                                        Padding="8">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Name="BtnClearFfmpegLog"
+                                                Content="🗑️ 清空FFmpeg日志"
+                                                Width="140"
+                                                Height="28"
+                                                FontSize="10"
+                                                Click="BtnClearFfmpegLog_Click"/>
+                                    </StackPanel>
+                                </Border>
                             </Grid>
                         </TabItem>
                     </TabControl>

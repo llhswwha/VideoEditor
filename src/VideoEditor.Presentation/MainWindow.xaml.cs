@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -536,6 +536,7 @@ namespace VideoEditor.Presentation
 
                 Services.DebugLogger.LogInfo("创建 VideoProcessingService...");
                 _videoProcessingService = new Services.VideoProcessingService();
+                _videoProcessingService.FfmpegLogReceived += VideoProcessingService_FfmpegLogReceived;
 
                 Services.DebugLogger.LogInfo("创建 CropHistoryService...");
                 _cropHistoryService = new Services.CropHistoryService();
@@ -1019,9 +1020,35 @@ namespace VideoEditor.Presentation
             // 隐藏字幕预览Popup
             HideSubtitlePreviewPopup();
 
-            // 取消任何正在进行的裁剪操作
+            // 取消任何正在进行的任务
             _cropCancellationTokenSource?.Cancel();
             _cropCancellationTokenSource?.Dispose();
+            _transcodeCancellationTokenSource?.Cancel();
+            _transcodeCancellationTokenSource?.Dispose();
+            _clipCutCancellationTokenSource?.Cancel();
+            _clipCutCancellationTokenSource?.Dispose();
+            _watermarkCancellationTokenSource?.Cancel();
+            _watermarkCancellationTokenSource?.Dispose();
+            _deduplicateCancellationTokenSource?.Cancel();
+            _deduplicateCancellationTokenSource?.Dispose();
+            _flipCancellationTokenSource?.Cancel();
+            _flipCancellationTokenSource?.Dispose();
+            _filterCancellationTokenSource?.Cancel();
+            _filterCancellationTokenSource?.Dispose();
+            _mergeCancellationTokenSource?.Cancel();
+            _mergeCancellationTokenSource?.Dispose();
+            _audioCancellationTokenSource?.Cancel();
+            _audioCancellationTokenSource?.Dispose();
+            _subtitleCancellationTokenSource?.Cancel();
+            _subtitleCancellationTokenSource?.Dispose();
+            _timecodeCancellationTokenSource?.Cancel();
+            _timecodeCancellationTokenSource?.Dispose();
+            _embeddedCancellationTokenSource?.Cancel();
+            _embeddedCancellationTokenSource?.Dispose();
+            if (_videoProcessingService != null)
+            {
+                _videoProcessingService.FfmpegLogReceived -= VideoProcessingService_FfmpegLogReceived;
+            }
 
             base.OnClosed(e);
             
@@ -1486,7 +1513,7 @@ namespace VideoEditor.Presentation
                     InputPath = selectedFile.FilePath,
                     OutputPath = task.OutputPath,
                     Description = $"片段: {clipTitle}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         return await _videoProcessingService.CutClipAsync(
                             input,
@@ -1494,7 +1521,7 @@ namespace VideoEditor.Presentation
                             task.Clip.StartTime,
                             task.Clip.EndTime,
                             settings.CustomArgs,
-                            null, // 进度由批量处理器统一处理
+                            progress,
                             ct);
                     },
                     EstimatedDuration = TimeSpan.FromMilliseconds(task.Clip.EndTime - task.Clip.StartTime)
@@ -1516,6 +1543,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0, // 执行日志现在是第1个标签页（索引0）
@@ -6305,6 +6337,28 @@ namespace VideoEditor.Presentation
             LogOutputBox.ScrollToEnd();
         }
 
+        private void VideoProcessingService_FfmpegLogReceived(string message)
+        {
+            AppendFfmpegLogLine(message);
+        }
+
+        private void AppendFfmpegLogLine(string message)
+        {
+            if (FfmpegLogOutputBox == null)
+            {
+                return;
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => AppendFfmpegLogLine(message));
+                return;
+            }
+
+            FfmpegLogOutputBox.AppendText(message + Environment.NewLine);
+            FfmpegLogOutputBox.ScrollToEnd();
+        }
+
         private TaskProgressItem CreateTaskProgress(string type, string name, string detail)
         {
             var task = new TaskProgressItem(type, name)
@@ -8073,7 +8127,7 @@ namespace VideoEditor.Presentation
                         InputPath = inputFile.FilePath,
                         OutputPath = outputPath,
                         Description = $"处理文件: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                        ExecuteTask = async (input, output, ct) =>
+                        ExecuteTask = async (input, output, progress, ct) =>
                         {
                             var fileStartTime = DateTime.Now;
 
@@ -8098,7 +8152,7 @@ namespace VideoEditor.Presentation
                         GetAudioCodecForFFmpeg(outputSettings.AudioCodec),
                         outputSettings.AudioBitrate,
                         outputSettings.CustomArgs,
-                                    null, // 进度由批量处理器统一处理
+                                    progress,
                                     ct);
 
                     var fileProcessingTime = (long)(DateTime.Now - fileStartTime).TotalMilliseconds;
@@ -8444,6 +8498,11 @@ namespace VideoEditor.Presentation
         private void CropParameter_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_isUpdatingCropFromCode) return; // 避免循环更新
+
+            // InitializeComponent() 期间控件按 XAML 顺序逐一创建，
+            // CropXTextBox 的初始文本赋值会触发此事件，但此时其余控件可能尚未实例化
+            if (CropXTextBox == null || CropYTextBox == null ||
+                CropWTextBox == null || CropHTextBox == null) return;
 
             try
             {
@@ -10128,21 +10187,36 @@ namespace VideoEditor.Presentation
                         {
                             var version = versionLine.Split(' ').Skip(2).FirstOrDefault();
                             if (StatusFFmpegVersion != null)
-                                StatusFFmpegVersion.Text = $"FFmpeg: {version}";
+                            {
+                                Dispatcher.Invoke(() =>
+                                {
+                                    StatusFFmpegVersion.Text = $"FFmpeg: {version}";
+                                });
+                            }
                         }
                     }
                 }
                 else
                 {
                     if (StatusFFmpegVersion != null)
-                        StatusFFmpegVersion.Text = "FFmpeg: 未检测到";
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            StatusFFmpegVersion.Text = "FFmpeg: 未检测到";
+                        });
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Services.DebugLogger.LogError($"CheckFFmpegVersion 错误: {ex.Message}");
                 if (StatusFFmpegVersion != null)
-                    StatusFFmpegVersion.Text = "FFmpeg: 未知";
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        StatusFFmpegVersion.Text = "FFmpeg: 未知";
+                    });
+                }
             }
         }
 
@@ -11609,7 +11683,7 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"添加水印: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.AddWatermarkAsync(
                             input, output, parameters,
@@ -11618,7 +11692,7 @@ namespace VideoEditor.Presentation
                             GetAudioCodecForFFmpeg(settings.AudioCodec),
                             settings.AudioBitrate.Replace(" kbps", "k"),
                             settings.CustomArgs,
-                            null, // Progress handled by batch processor
+                            progress,
                             ct);
                         return result;
                     },
@@ -11647,6 +11721,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
@@ -11682,7 +11761,7 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"移除水印: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.RemoveWatermarkAsync(
                             input, output, parameters,
@@ -11691,7 +11770,7 @@ namespace VideoEditor.Presentation
                             GetAudioCodecForFFmpeg(settings.AudioCodec),
                             settings.AudioBitrate.Replace(" kbps", "k"),
                             settings.CustomArgs,
-                            null,
+                            progress,
                             ct);
                         return result;
                     },
@@ -11717,6 +11796,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
@@ -12126,7 +12210,7 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"去重处理: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.ApplyDeduplicateAsync(
                             input, output, parameters,
@@ -12135,7 +12219,7 @@ namespace VideoEditor.Presentation
                             GetAudioCodecForFFmpeg(settings.AudioCodec),
                             settings.AudioBitrate.Replace(" kbps", "k"),
                             settings.CustomArgs,
-                            null, // Progress handled by batch processor
+                            progress,
                             ct);
                         return result;
                     },
@@ -12163,6 +12247,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
@@ -12667,14 +12756,14 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"应用音频设置: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.ApplyAudioSettingsAsync(
                             input, output, parameters,
                             GetVideoCodecForFFmpeg(settings.VideoCodec),
                             settings.Quality,
                             settings.CustomArgs,
-                            null,
+                            progress,
                             ct);
                         return result;
                     },
@@ -12701,6 +12790,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
@@ -12739,11 +12833,11 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"提取音频: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.ExtractAudioAsync(
                             input, output, audioFormat, bitrate,
-                            null,
+                            progress,
                             ct);
                         return result;
                     },
@@ -12767,6 +12861,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
@@ -12801,12 +12900,12 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"替换音频: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.ReplaceAudioAsync(
                             input, audioFilePath, output,
                             GetVideoCodecForFFmpeg(settings.VideoCodec),
-                            null,
+                            progress,
                             ct);
                         return result;
                     },
@@ -12831,6 +12930,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
@@ -12864,12 +12968,12 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"删除音频: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.RemoveAudioAsync(
                             input, output,
                             GetVideoCodecForFFmpeg(settings.VideoCodec),
-                            null,
+                            progress,
                             ct);
                         return result;
                     },
@@ -12955,6 +13059,7 @@ namespace VideoEditor.Presentation
         /// </summary>
         private async void BtnStartTranscode_Click(object sender, RoutedEventArgs e)
         {
+            var btnStart = sender as Button;
             try
             {
                 // 获取选中的文件
@@ -12994,16 +13099,37 @@ namespace VideoEditor.Presentation
                     return;
                 }
 
-                // 执行批量转码
-                _transcodeCancellationTokenSource?.Cancel();
-                _transcodeCancellationTokenSource = new CancellationTokenSource();
+                // 禁用开始按钮，启用停止按钮
+                if (btnStart != null) btnStart.IsEnabled = false;
+                if (StopExecutionButton != null) StopExecutionButton.IsEnabled = true;
 
+                // 执行批量转码
+                Services.DebugLogger.LogInfo($"开始批量转码任务，准备执行 (Count: {selectedFiles.Count})");
+                
+                // 确保之前的任务已取消
+                if (_transcodeCancellationTokenSource != null)
+                {
+                    Services.DebugLogger.LogWarning("检测到旧的转码任务，正在发送取消信号并等待释放...");
+                    _transcodeCancellationTokenSource.Cancel();
+                    _transcodeCancellationTokenSource.Dispose();
+                }
+
+                _transcodeCancellationTokenSource = new CancellationTokenSource();
+                Services.DebugLogger.LogInfo("新的 _transcodeCancellationTokenSource 已创建");
+                
                 await ExecuteTranscodeBatchAsync(selectedFiles, transcodeParams, outputSettings, _transcodeCancellationTokenSource.Token);
             }
             catch (Exception ex)
             {
                 Services.DebugLogger.LogError($"BtnStartTranscode_Click 失败: {ex.Message}");
                 MessageBox.Show($"转码时发生错误：{ex.Message}", "转码", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                // 恢复按钮状态
+                if (btnStart != null) btnStart.IsEnabled = true;
+                if (StopExecutionButton != null) StopExecutionButton.IsEnabled = false;
+                Services.DebugLogger.LogInfo("批量转码任务执行结束，按钮状态已恢复");
             }
         }
 
@@ -13118,12 +13244,12 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"转码: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.TranscodeAsync(
                             input, output, parameters,
                             settings.CustomArgs,
-                            null, // Progress handled by batch processor
+                            progress,
                             ct);
                         return result;
                     },
@@ -13155,6 +13281,11 @@ namespace VideoEditor.Presentation
                 {
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
+                },
+                UpdateFileProgress = (progress, text) =>
+                {
+                    FileProgressBar.Value = progress;
+                    FileProgressText.Text = text;
                 },
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
@@ -15752,12 +15883,12 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"分割片段 {segment.Index}: {segment.ToDisplayString()}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var customArgs = keepCodec ? "" : $"-c:v {GetVideoCodecForFFmpeg(settings.VideoCodec)} -c:a {GetAudioCodecForFFmpeg(settings.AudioCodec)}";
                         var startMs = (long)startTime.TotalMilliseconds;
                         var endMs = (long)endTime.TotalMilliseconds;
-                        var result = await _videoProcessingService.CutClipAsync(input, output, startMs, endMs, customArgs, null, ct);
+                        var result = await _videoProcessingService.CutClipAsync(input, output, startMs, endMs, customArgs, progress, ct);
                         return result;
                     },
                     EstimatedDuration = null
@@ -16511,7 +16642,7 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"应用滤镜: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.ApplyFiltersAsync(
                             input,
@@ -16522,7 +16653,7 @@ namespace VideoEditor.Presentation
                             GetAudioCodecForFFmpeg(settings.AudioCodec),
                             settings.AudioBitrate.Replace(" kbps", "k"),
                             settings.CustomArgs,
-                            null,
+                            progress,
                             ct);
                         return result;
                     },
@@ -17368,7 +17499,7 @@ namespace VideoEditor.Presentation
                     InputPath = inputFile.FilePath,
                     OutputPath = outputPath,
                     Description = $"应用翻转设置: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
-                    ExecuteTask = async (input, output, ct) =>
+                    ExecuteTask = async (input, output, progress, ct) =>
                     {
                         var result = await _videoProcessingService.ApplyFlipAsync(
                             input, output, parameters,
@@ -17377,7 +17508,7 @@ namespace VideoEditor.Presentation
                             GetAudioCodecForFFmpeg(settings.AudioCodec),
                             settings.AudioBitrate,
                             settings.CustomArgs,
-                            null,
+                            progress,
                             ct);
                         return result;
                     },
@@ -17639,7 +17770,7 @@ namespace VideoEditor.Presentation
                         InputPath = mergeFiles.First(),
                         OutputPath = outputPath,
                         Description = $"合并 {mergeFiles.Count} 个文件\r\n📁 输出: {outputFileName}",
-                        ExecuteTask = async (_, output, ct) =>
+                        ExecuteTask = async (_, output, progress, ct) =>
                         {
                             return await _videoProcessingService.MergeVideosAsync(
                                 mergeFiles,
@@ -17647,7 +17778,7 @@ namespace VideoEditor.Presentation
                                 videoCodec,
                                 audioCodec,
                                 outputSettings.CustomArgs,
-                                null,
+                                progress,
                                 ct);
                         }
                     }
@@ -18230,6 +18361,25 @@ namespace VideoEditor.Presentation
             }
         }
 
+        private void BtnClearFfmpegLog_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (FfmpegLogOutputBox == null)
+                {
+                    return;
+                }
+
+                FfmpegLogOutputBox.Text = "FFmpeg实时日志输出...";
+                Services.ToastNotification.ShowSuccess("FFmpeg日志已清空");
+            }
+            catch (Exception ex)
+            {
+                Services.DebugLogger.LogError($"清空FFmpeg日志失败: {ex.Message}");
+                Services.ToastNotification.ShowError($"清空FFmpeg日志失败: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// 停止执行按钮点击事件
         /// </summary>
@@ -18252,6 +18402,7 @@ namespace VideoEditor.Presentation
                 }
 
                 // 取消所有活动的CancellationTokenSource
+                Services.DebugLogger.LogWarning("用户请求停止所有执行的任务，正在调用 Cancel()...");
                 _clipCutCancellationTokenSource?.Cancel();
                 _cropCancellationTokenSource?.Cancel();
                 _watermarkCancellationTokenSource?.Cancel();
@@ -18264,6 +18415,7 @@ namespace VideoEditor.Presentation
                 _subtitleCancellationTokenSource?.Cancel();
                 _timecodeCancellationTokenSource?.Cancel();
                 _embeddedCancellationTokenSource?.Cancel();
+                Services.DebugLogger.LogWarning("所有 CancellationTokenSource 已发送取消信号");
 
                 // 更新日志
                 if (LogOutputBox != null)
