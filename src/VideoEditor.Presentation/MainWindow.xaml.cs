@@ -54,6 +54,11 @@ namespace VideoEditor.Presentation
         private const int MaxRecentProjects = 8;
         private readonly ObservableCollection<RecentProjectItem> _recentProjects = new();
         public ObservableCollection<RecentProjectItem> RecentProjects => _recentProjects;
+
+        // 最近打开的文件夹（最多保留20条）
+        private const int MaxRecentFolders = 20;
+        private readonly ObservableCollection<RecentProjectItem> _recentFolders = new();
+        public ObservableCollection<RecentProjectItem> RecentFolders => _recentFolders;
         private const string ProjectFileFilter = "VideoEditor 项目 (*.veproj)|*.veproj|所有文件|*.*";
         private const string ProjectFileExtension = ".veproj";
         private const string BaseWindowTitle = "视频编辑器 - 6 区域布局";
@@ -76,6 +81,180 @@ namespace VideoEditor.Presentation
         protected virtual void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private void RefreshRecentFoldersMenu()
+        {
+            try
+            {
+                if (RecentFoldersMenu == null)
+                    return;
+
+                RecentFoldersMenu.Items.Clear();
+
+                var realItems = _recentFolders.Where(p => !p.IsPlaceholder).ToList();
+                if (realItems.Count == 0)
+                {
+                    var placeholder = new MenuItem { Header = "(无最近文件夹)", IsEnabled = false };
+                    RecentFoldersMenu.Items.Add(placeholder);
+                    return;
+                }
+
+                foreach (var item in realItems)
+                {
+                    var mi = new MenuItem { Header = item.DisplayName, ToolTip = item.FilePath, Tag = item.FilePath };
+                    mi.Click += RecentFolderMenuItem_Click;
+                    RecentFoldersMenu.Items.Add(mi);
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.DebugLogger.LogWarning($"刷新最近文件夹菜单失败: {ex.Message}");
+            }
+        }
+
+        private void RecentFolderMenuItem_Click(object? sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem mi && mi.Tag is string path)
+            {
+                try
+                {
+                    // 将该文件夹作为导入源并记录
+                    _ = _videoListViewModel.AddFolderAsync(path);
+                    AddToRecentFolders(path);
+
+                    if (OutputPathBox != null)
+                    {
+                        OutputPathBox.Text = path;
+                        UpdateDiskSpace();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Services.DebugLogger.LogError($"从最近文件夹打开失败: {ex.Message}");
+                }
+            }
+        }
+
+        private void LoadRecentFoldersFromSettings()
+        {
+            try
+            {
+                _recentFolders.Clear();
+                var raw = Properties.Settings.Default.RecentFolders ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(raw))
+                {
+                    var entries = raw.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var entry in entries)
+                    {
+                        AddRecentFolderEntry(entry.Trim(), saveSettings: false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.DebugLogger.LogError($"加载最近文件夹列表失败: {ex.Message}");
+            }
+            finally
+            {
+                EnsureRecentFolderPlaceholder();
+            }
+        }
+
+        private void AddToRecentFolders(string? folderPath)
+        {
+            if (string.IsNullOrWhiteSpace(folderPath))
+            {
+                return;
+            }
+
+            AddRecentFolderEntry(folderPath, saveSettings: true);
+            RefreshRecentFoldersMenu();
+        }
+
+        private void AddRecentFolderEntry(string path, bool saveSettings)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            string normalizedPath;
+            try
+            {
+                normalizedPath = Path.GetFullPath(path);
+            }
+            catch
+            {
+                normalizedPath = path;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return;
+            }
+
+            var placeholder = _recentFolders.FirstOrDefault(p => p.IsPlaceholder);
+            if (placeholder != null)
+            {
+                _recentFolders.Remove(placeholder);
+            }
+
+            var existing = _recentFolders.FirstOrDefault(p => !p.IsPlaceholder && p.FilePath.Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                _recentFolders.Remove(existing);
+            }
+
+            _recentFolders.Insert(0, RecentProjectItem.Create(normalizedPath));
+
+            while (_recentFolders.Count(p => !p.IsPlaceholder) > MaxRecentFolders)
+            {
+                var last = _recentFolders.LastOrDefault(p => !p.IsPlaceholder);
+                if (last != null)
+                {
+                    _recentFolders.Remove(last);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            EnsureRecentFolderPlaceholder();
+
+            if (saveSettings)
+            {
+                SaveRecentFoldersToSettings();
+            }
+        }
+
+        private void EnsureRecentFolderPlaceholder()
+        {
+            var placeholder = _recentFolders.FirstOrDefault(p => p.IsPlaceholder);
+            var hasRealItems = _recentFolders.Any(p => !p.IsPlaceholder);
+
+            if (!hasRealItems)
+            {
+                if (placeholder == null)
+                {
+                    _recentFolders.Add(RecentProjectItem.CreatePlaceholder());
+                }
+            }
+            else if (placeholder != null)
+            {
+                _recentFolders.Remove(placeholder);
+            }
+        }
+
+        private void SaveRecentFoldersToSettings()
+        {
+            var serialized = string.Join("|", _recentFolders
+                .Where(p => !p.IsPlaceholder)
+                .Select(p => p.FilePath));
+
+            Properties.Settings.Default.RecentFolders = serialized;
+            Properties.Settings.Default.Save();
         }
 
         public bool IsPlayerMode
@@ -506,6 +685,8 @@ namespace VideoEditor.Presentation
         private bool _isSelecting = false;
         private Point _selectionStart;
         private Point _selectionEnd;
+        private string? _videoFileListSortColumn;
+        private ListSortDirection _videoFileListSortDirection = ListSortDirection.Ascending;
         
         // 全屏状态
         private bool _isFullScreen = false;
@@ -545,9 +726,12 @@ namespace VideoEditor.Presentation
                 _clipManager = new ClipManager();
                 
                 LoadRecentProjectsFromSettings();
+                LoadRecentFoldersFromSettings();
                 
                 Services.DebugLogger.LogInfo("调用 InitializeComponent...");
                 InitializeComponent();
+                // 刷新最近文件夹菜单（XAML 已加载）
+                RefreshRecentFoldersMenu();
 
                 if (TaskProgressListView != null)
                 {
@@ -1789,7 +1973,32 @@ namespace VideoEditor.Presentation
 
             if (folderDialog.ShowDialog() == Forms.DialogResult.OK)
             {
-                await _videoListViewModel.AddFolderAsync(folderDialog.SelectedPath);
+                var selected = folderDialog.SelectedPath;
+                await _videoListViewModel.AddFolderAsync(selected);
+                // 记录最近打开的文件夹
+                try
+                {
+                    AddToRecentFolders(selected);
+                }
+                catch (Exception ex)
+                {
+                    Services.DebugLogger.LogWarning($"记录最近文件夹失败: {ex.Message}");
+                }
+
+                // 将右侧输出路径切换为导入的文件夹（方便批量输出到同一目录）
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(selected) && OutputPathBox != null)
+                    {
+                        OutputPathBox.Text = selected;
+                        // 更新磁盘空间显示
+                        UpdateDiskSpace();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Services.DebugLogger.LogWarning($"设置输出路径为导入文件夹失败: {ex.Message}");
+                }
             }
         }
 
@@ -3269,6 +3478,68 @@ namespace VideoEditor.Presentation
             }
         }
 
+        private void VideoFileListColumnHeader_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not GridViewColumnHeader header || header.Tag is not string sortColumn)
+            {
+                return;
+            }
+
+            var nextDirection = _videoFileListSortColumn == sortColumn && _videoFileListSortDirection == ListSortDirection.Ascending
+                ? ListSortDirection.Descending
+                : ListSortDirection.Ascending;
+
+            _videoFileListSortColumn = sortColumn;
+            _videoFileListSortDirection = nextDirection;
+
+            switch (sortColumn)
+            {
+                case "FileName":
+                    if (nextDirection == ListSortDirection.Ascending)
+                    {
+                        _videoListViewModel.SortByNameAscending();
+                    }
+                    else
+                    {
+                        _videoListViewModel.SortByNameDescending();
+                    }
+                    break;
+
+                case "FileSize":
+                    if (nextDirection == ListSortDirection.Ascending)
+                    {
+                        _videoListViewModel.SortBySizeAscending();
+                    }
+                    else
+                    {
+                        _videoListViewModel.SortBySizeDescending();
+                    }
+                    break;
+
+                case "Resolution":
+                    if (nextDirection == ListSortDirection.Ascending)
+                    {
+                        _videoListViewModel.SortByResolutionAscending();
+                    }
+                    else
+                    {
+                        _videoListViewModel.SortByResolutionDescending();
+                    }
+                    break;
+
+                case "Duration":
+                    if (nextDirection == ListSortDirection.Ascending)
+                    {
+                        _videoListViewModel.SortByDurationAscending();
+                    }
+                    else
+                    {
+                        _videoListViewModel.SortByDurationDescending();
+                    }
+                    break;
+            }
+        }
+
         #endregion
 
         #region 右键菜单事件
@@ -3406,6 +3677,22 @@ namespace VideoEditor.Presentation
         private void ContextMenu_SortBySizeAsc_Click(object sender, RoutedEventArgs e)
         {
             _videoListViewModel.SortBySizeAscending();
+        }
+
+        /// <summary>
+        /// 按分辨率降序排序
+        /// </summary>
+        private void ContextMenu_SortByResolutionDesc_Click(object sender, RoutedEventArgs e)
+        {
+            _videoListViewModel.SortByResolutionDescending();
+        }
+
+        /// <summary>
+        /// 按分辨率升序排序
+        /// </summary>
+        private void ContextMenu_SortByResolutionAsc_Click(object sender, RoutedEventArgs e)
+        {
+            _videoListViewModel.SortByResolutionAscending();
         }
 
         /// <summary>

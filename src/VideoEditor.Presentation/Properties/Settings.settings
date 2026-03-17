@@ -11,6 +11,9 @@
     <Setting Name="RecentProjects" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
     </Setting>
+    <Setting Name="RecentFolders" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
     <Setting Name="DeepSeekApiKey" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
     </Setting>

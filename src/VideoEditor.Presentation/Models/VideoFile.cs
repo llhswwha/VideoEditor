@@ -123,6 +123,7 @@ namespace VideoEditor.Presentation.Models
             {
                 _width = value;
                 OnPropertyChanged(nameof(Width));
+                OnPropertyChanged(nameof(Resolution));
             }
         }
 
@@ -136,6 +137,7 @@ namespace VideoEditor.Presentation.Models
             {
                 _height = value;
                 OnPropertyChanged(nameof(Height));
+                OnPropertyChanged(nameof(Resolution));
             }
         }
 
@@ -389,7 +391,7 @@ namespace VideoEditor.Presentation.Models
         /// <summary>
         /// 分辨率字符串
         /// </summary>
-        public string Resolution => $"{Width}x{Height}";
+        public string Resolution => Width > 0 && Height > 0 ? $"{Width}x{Height}" : "-";
 
         /// <summary>
         /// 构造函数

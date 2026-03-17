@@ -153,7 +153,14 @@
             <!-- 文件菜单 -->
             <MenuItem Header="文件(_F)" FontSize="13">
                 <MenuItem Header="📂 打开文件..." InputGestureText="Ctrl+O" Click="AddFilesButton_Click"/>
-                <MenuItem Header="📁 打开文件夹..." InputGestureText="Ctrl+Shift+O" Click="AddFolderButton_Click"/>
+                <MenuItem Header="📁 打开文件夹..." InputGestureText="Ctrl+Shift+O" Click="AddFolderButton_Click">
+                    <MenuItem.ContextMenu>
+                        <ContextMenu />
+                    </MenuItem.ContextMenu>
+                </MenuItem>
+                <MenuItem Header="最近文件夹" x:Name="RecentFoldersMenu" FontSize="12">
+                    <!-- 最近打开的文件夹项将在运行时填充 -->
+                </MenuItem>
                 <MenuItem Header="📦 打开项目文件..." InputGestureText="Ctrl+Alt+O" Click="OpenProjectMenuItem_Click"/>
                 <Separator/>
                 <MenuItem Header="💾 保存项目..." InputGestureText="Ctrl+S" Click="SaveProjectMenuItem_Click"/>
@@ -338,10 +345,43 @@
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
-                                        <GridViewColumn Header="文件名" Width="240">
+                                        <GridViewColumn Width="150">
+                                            <GridViewColumn.Header>
+                                                <GridViewColumnHeader Tag="FileName" Click="VideoFileListColumnHeader_Click">文件名</GridViewColumnHeader>
+                                            </GridViewColumn.Header>
                                             <GridViewColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                        <GridViewColumn Width="80">
+                                            <GridViewColumn.Header>
+                                                <GridViewColumnHeader Tag="FileSize" Click="VideoFileListColumnHeader_Click">文件大小</GridViewColumnHeader>
+                                            </GridViewColumn.Header>
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding FormattedFileSize}" TextAlignment="Right"/>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                        <GridViewColumn Width="80">
+                                            <GridViewColumn.Header>
+                                                <GridViewColumnHeader Tag="Resolution" Click="VideoFileListColumnHeader_Click">分辨率</GridViewColumnHeader>
+                                            </GridViewColumn.Header>
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Resolution}" TextAlignment="Center"/>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                        <GridViewColumn Width="95">
+                                            <GridViewColumn.Header>
+                                                <GridViewColumnHeader Tag="Duration" Click="VideoFileListColumnHeader_Click">播放时长</GridViewColumnHeader>
+                                            </GridViewColumn.Header>
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding FormattedDuration}" TextAlignment="Center" FontFamily="Consolas"/>
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
@@ -369,6 +409,9 @@
                                             <Separator/>
                                             <MenuItem Header="按文件大小 (大→小)" Click="ContextMenu_SortBySizeDesc_Click"/>
                                             <MenuItem Header="按文件大小 (小→大)" Click="ContextMenu_SortBySizeAsc_Click"/>
+                                            <Separator/>
+                                            <MenuItem Header="按分辨率 (大→小)" Click="ContextMenu_SortByResolutionDesc_Click"/>
+                                            <MenuItem Header="按分辨率 (小→大)" Click="ContextMenu_SortByResolutionAsc_Click"/>
                                             <Separator/>
                                             <MenuItem Header="按时长 (长→短)" Click="ContextMenu_SortByDurationDesc_Click"/>
                                             <MenuItem Header="按时长 (短→长)" Click="ContextMenu_SortByDurationAsc_Click"/>

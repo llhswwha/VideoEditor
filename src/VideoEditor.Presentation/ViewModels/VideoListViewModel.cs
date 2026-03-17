@@ -584,6 +584,62 @@ namespace VideoEditor.Presentation.ViewModels
         }
 
         /// <summary>
+        /// 按分辨率排序 (大→小)
+        /// </summary>
+        public void SortByResolutionDescending()
+        {
+            try
+            {
+                var sortedList = Files
+                    .OrderByDescending(f => (long)f.Width * f.Height)
+                    .ThenByDescending(f => f.Width)
+                    .ThenByDescending(f => f.Height)
+                    .ThenBy(f => f.FileName)
+                    .ToList();
+                Files.Clear();
+                foreach (var file in sortedList)
+                {
+                    Files.Add(file);
+                }
+                StatusMessage = "已按分辨率排序 (大→小)";
+                Services.DebugLogger.LogInfo("列表已按分辨率降序排序");
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"排序时发生错误: {ex.Message}";
+                Services.DebugLogger.LogError($"SortByResolutionDescending: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 按分辨率排序 (小→大)
+        /// </summary>
+        public void SortByResolutionAscending()
+        {
+            try
+            {
+                var sortedList = Files
+                    .OrderBy(f => (long)f.Width * f.Height)
+                    .ThenBy(f => f.Width)
+                    .ThenBy(f => f.Height)
+                    .ThenBy(f => f.FileName)
+                    .ToList();
+                Files.Clear();
+                foreach (var file in sortedList)
+                {
+                    Files.Add(file);
+                }
+                StatusMessage = "已按分辨率排序 (小→大)";
+                Services.DebugLogger.LogInfo("列表已按分辨率升序排序");
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"排序时发生错误: {ex.Message}";
+                Services.DebugLogger.LogError($"SortByResolutionAscending: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 按时长排序 (长→短)
         /// </summary>
         public void SortByDurationDescending()
