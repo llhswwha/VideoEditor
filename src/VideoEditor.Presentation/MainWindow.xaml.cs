@@ -6359,6 +6359,40 @@ namespace VideoEditor.Presentation
             FfmpegLogOutputBox.ScrollToEnd();
         }
 
+        private void UpdateFileProgressDisplay(double progress, string text)
+        {
+            if (FileProgressBar != null)
+            {
+                FileProgressBar.Value = progress;
+            }
+
+            if (FileProgressText != null)
+            {
+                FileProgressText.Text = text;
+            }
+        }
+
+        private void UpdateFileElapsedDisplay(string text)
+        {
+            if (FileElapsedTimeText != null)
+            {
+                FileElapsedTimeText.Text = string.IsNullOrWhiteSpace(text) ? "00:00" : text;
+            }
+        }
+
+        private void UpdateFileEstimateDisplay(string totalText, string remainingText)
+        {
+            if (FindName("FileEstimatedTotalTimeText") is TextBlock totalTextBlock)
+            {
+                totalTextBlock.Text = string.IsNullOrWhiteSpace(totalText) ? "--:--" : totalText;
+            }
+
+            if (FindName("FileEstimatedRemainingTimeText") is TextBlock remainingTextBlock)
+            {
+                remainingTextBlock.Text = string.IsNullOrWhiteSpace(remainingText) ? "--:--" : remainingText;
+            }
+        }
+
         private TaskProgressItem CreateTaskProgress(string type, string name, string detail)
         {
             var task = new TaskProgressItem(type, name)
@@ -8206,6 +8240,9 @@ namespace VideoEditor.Presentation
                         ExecutionProgressBar.Value = progress;
                         ProgressInfoText.Text = text;
                     },
+                    UpdateFileProgress = UpdateFileProgressDisplay,
+                    UpdateFileElapsed = UpdateFileElapsedDisplay,
+                    UpdateFileEstimate = UpdateFileEstimateDisplay,
                     AppendLog = (text) => LogOutputBox.Text += text,
                     SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0, // 执行日志现在是第1个标签页（索引0）
                     InitializeLog = (text) => LogOutputBox.Text = text
@@ -11722,11 +11759,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
-                UpdateFileProgress = (progress, text) =>
-                {
-                    FileProgressBar.Value = progress;
-                    FileProgressText.Text = text;
-                },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -11797,11 +11832,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
-                UpdateFileProgress = (progress, text) =>
-                {
-                    FileProgressBar.Value = progress;
-                    FileProgressText.Text = text;
-                },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -12248,11 +12281,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
-                UpdateFileProgress = (progress, text) =>
-                {
-                    FileProgressBar.Value = progress;
-                    FileProgressText.Text = text;
-                },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -12791,11 +12822,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
-                UpdateFileProgress = (progress, text) =>
-                {
-                    FileProgressBar.Value = progress;
-                    FileProgressText.Text = text;
-                },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -12862,11 +12891,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
-                UpdateFileProgress = (progress, text) =>
-                {
-                    FileProgressBar.Value = progress;
-                    FileProgressText.Text = text;
-                },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -12931,11 +12958,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
-                UpdateFileProgress = (progress, text) =>
-                {
-                    FileProgressBar.Value = progress;
-                    FileProgressText.Text = text;
-                },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -13282,11 +13307,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
-                UpdateFileProgress = (progress, text) =>
-                {
-                    FileProgressBar.Value = progress;
-                    FileProgressText.Text = text;
-                },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -15913,6 +15936,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -16682,6 +16708,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -17536,6 +17565,9 @@ namespace VideoEditor.Presentation
                     ExecutionProgressBar.Value = progress;
                     ProgressInfoText.Text = text;
                 },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                 AppendLog = (text) => LogOutputBox.Text += text,
                 SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0,
                 InitializeLog = (text) => LogOutputBox.Text = text
@@ -17802,6 +17834,9 @@ namespace VideoEditor.Presentation
                         ExecutionProgressBar.Value = progress;
                         ProgressInfoText.Text = text;
                     },
+                UpdateFileProgress = UpdateFileProgressDisplay,
+                UpdateFileElapsed = UpdateFileElapsedDisplay,
+                UpdateFileEstimate = UpdateFileEstimateDisplay,
                     AppendLog = (text) => LogOutputBox.Text += text,
                     InitializeLog = (text) => LogOutputBox.Text = text,
                     SwitchToLogTab = () => OutputInfoTabs.SelectedIndex = 0

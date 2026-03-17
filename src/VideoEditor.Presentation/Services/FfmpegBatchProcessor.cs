@@ -100,6 +100,16 @@ namespace VideoEditor.Presentation.Services
             public Action<double, string>? UpdateFileProgress { get; set; }
 
             /// <summary>
+            /// 单个文件处理用时更新回调
+            /// </summary>
+            public Action<string>? UpdateFileElapsed { get; set; }
+
+            /// <summary>
+            /// 单个文件预计总用时与剩余时间更新回调
+            /// </summary>
+            public Action<string, string>? UpdateFileEstimate { get; set; }
+
+            /// <summary>
             /// 日志追加回调
             /// </summary>
             public Action<string>? AppendLog { get; set; }
@@ -154,6 +164,8 @@ namespace VideoEditor.Presentation.Services
                 config.SwitchToLogTab?.Invoke();
                 config.UpdateProgress?.Invoke(0, $"0/{tasks.Count} | 0%");
                 config.UpdateFileProgress?.Invoke(0, "准备开始...");
+                config.UpdateFileElapsed?.Invoke("00:00");
+                config.UpdateFileEstimate?.Invoke("--:--", "--:--");
 
                 var logHeader = $"{config.OperationIcon} 开始{config.OperationName}\r\n" +
                                $"📊 待处理任务数: {tasks.Count}\r\n";
@@ -181,6 +193,8 @@ namespace VideoEditor.Presentation.Services
                         config.AppendLog?.Invoke("\r\n⚠️ 批量操作已取消\r\n");
                         config.UpdateStatusBar?.Invoke("操作已取消", "⚠️", "#FF9800", "空闲");
                         config.UpdateFileProgress?.Invoke(0, "已取消");
+                        config.UpdateFileElapsed?.Invoke("00:00");
+                        config.UpdateFileEstimate?.Invoke("--:--", "--:--");
                     });
                     break;
                 }
@@ -202,6 +216,8 @@ namespace VideoEditor.Presentation.Services
 
                     // 重置单个文件进度
                     config.UpdateFileProgress?.Invoke(0, "正在初始化...");
+                    config.UpdateFileElapsed?.Invoke("00:00");
+                    config.UpdateFileEstimate?.Invoke("--:--", "--:--");
                 });
 
                 try
@@ -211,7 +227,11 @@ namespace VideoEditor.Presentation.Services
                     {
                         _dispatcher.Invoke(() => 
                         {
+                            var taskElapsed = DateTime.Now - taskStartTime;
                             config.UpdateFileProgress?.Invoke(p * 100, $"{p * 100:F1}%");
+                            config.UpdateFileElapsed?.Invoke(FormatElapsedTime(taskElapsed));
+                            var (estimatedTotal, estimatedRemaining) = EstimateTimes(p, taskElapsed);
+                            config.UpdateFileEstimate?.Invoke(estimatedTotal, estimatedRemaining);
                         });
                     }, cancellationToken);
 
@@ -239,6 +259,8 @@ namespace VideoEditor.Presentation.Services
                             }
                             config.AppendLog?.Invoke($"{successMessage}\r\n");
                             config.UpdateFileProgress?.Invoke(100, "已完成");
+                            config.UpdateFileElapsed?.Invoke(FormatElapsedTime(taskProcessingTime));
+                            config.UpdateFileEstimate?.Invoke(FormatElapsedTime(taskProcessingTime), "00:00");
                         });
                     }
                     else
@@ -248,6 +270,8 @@ namespace VideoEditor.Presentation.Services
                         {
                             config.AppendLog?.Invoke($"❌ 失败 | 错误: {taskResult.ErrorMessage}\r\n");
                             config.UpdateFileProgress?.Invoke(0, "失败");
+                            config.UpdateFileElapsed?.Invoke(FormatElapsedTime(taskProcessingTime));
+                            config.UpdateFileEstimate?.Invoke(FormatElapsedTime(taskProcessingTime), "00:00");
                         });
                     }
 
@@ -265,8 +289,11 @@ namespace VideoEditor.Presentation.Services
                     result.WasCancelled = true;
                     _dispatcher.Invoke(() =>
                     {
+                        var taskElapsed = DateTime.Now - taskStartTime;
                         config.AppendLog?.Invoke("⚠️ 任务处理被取消\r\n");
                         config.UpdateStatusBar?.Invoke("操作已取消", "⚠️", "#FF9800", "空闲");
+                        config.UpdateFileElapsed?.Invoke(FormatElapsedTime(taskElapsed));
+                        config.UpdateFileEstimate?.Invoke(FormatElapsedTime(taskElapsed), "00:00");
                     });
                     break;
                 }
@@ -275,8 +302,11 @@ namespace VideoEditor.Presentation.Services
                     result.FailCount++;
                     _dispatcher.Invoke(() =>
                     {
+                        var taskElapsed = DateTime.Now - taskStartTime;
                         config.AppendLog?.Invoke($"❌ 任务处理异常: {ex.Message}\r\n");
                         Services.DebugLogger.LogError($"批量处理任务异常: {ex.Message}");
+                        config.UpdateFileElapsed?.Invoke(FormatElapsedTime(taskElapsed));
+                        config.UpdateFileEstimate?.Invoke(FormatElapsedTime(taskElapsed), "00:00");
                     });
                 }
             }
@@ -327,6 +357,37 @@ namespace VideoEditor.Presentation.Services
                 len = len / 1024;
             }
             return $"{len:0.##} {sizes[order]}";
+        }
+
+        private static string FormatElapsedTime(TimeSpan elapsed)
+        {
+            if (elapsed.TotalHours >= 1)
+            {
+                return elapsed.ToString(@"hh\:mm\:ss");
+            }
+
+            return elapsed.ToString(@"mm\:ss");
+        }
+
+        private static (string total, string remaining) EstimateTimes(double progress, TimeSpan elapsed)
+        {
+            if (progress <= 0 || elapsed <= TimeSpan.Zero)
+            {
+                return ("--:--", "--:--");
+            }
+
+            var normalizedProgress = Math.Clamp(progress, 0.0001d, 1d);
+            var estimatedTotalTicks = (long)Math.Ceiling(elapsed.Ticks / normalizedProgress);
+            estimatedTotalTicks = Math.Max(estimatedTotalTicks, elapsed.Ticks);
+
+            var estimatedTotal = TimeSpan.FromTicks(estimatedTotalTicks);
+            var estimatedRemaining = estimatedTotal - elapsed;
+            if (estimatedRemaining < TimeSpan.Zero)
+            {
+                estimatedRemaining = TimeSpan.Zero;
+            }
+
+            return (FormatElapsedTime(estimatedTotal), FormatElapsedTime(estimatedRemaining));
         }
     }
 }

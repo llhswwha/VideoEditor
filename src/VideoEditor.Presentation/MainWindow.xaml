@@ -3294,36 +3294,74 @@
                                         </Grid>
 
                                         <!-- 单个文件进度 -->
-                                        <Grid Margin="0,2">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,2,0,0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
 
-                                            <TextBlock Text="当前文件:"
-                                                       Foreground="#999" 
-                                                       Margin="0,0,8,0" VerticalAlignment="Center" FontSize="10"/>
-                                            <ProgressBar Grid.Column="1" Name="FileProgressBar" 
-                                                         Height="12" Minimum="0" Maximum="100" Value="0"
-                                                         Foreground="#2196F3"
-                                                         Background="#37474F"
-                                                         BorderBrush="#37474F"
-                                                         Style="{x:Null}">
-                                                <ProgressBar.Template>
-                                                    <ControlTemplate TargetType="ProgressBar">
-                                                        <Border x:Name="PART_Track" Background="#37474F" BorderThickness="0" CornerRadius="2">
-                                                            <Border x:Name="PART_Indicator" Background="#2196F3" HorizontalAlignment="Left" CornerRadius="2"/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </ProgressBar.Template>
-                                            </ProgressBar>
-                                            <TextBlock Grid.Column="2" Name="FileProgressText" 
-                                                       Text="0.0%" 
-                                                       Foreground="#999" Margin="8,0,0,0"
-                                                       FontFamily="Consolas" FontSize="10"
-                                                       VerticalAlignment="Center"/>
-                                        </Grid>
+                                                <TextBlock Text="当前文件:"
+                                                           Foreground="#999" 
+                                                           Margin="0,0,8,0" VerticalAlignment="Center" FontSize="10"/>
+                                                <ProgressBar Grid.Column="1" Name="FileProgressBar" 
+                                                             Height="12" Minimum="0" Maximum="100" Value="0"
+                                                             Foreground="#2196F3"
+                                                             Background="#37474F"
+                                                             BorderBrush="#37474F"
+                                                             Style="{x:Null}">
+                                                    <ProgressBar.Template>
+                                                        <ControlTemplate TargetType="ProgressBar">
+                                                            <Border x:Name="PART_Track" Background="#37474F" BorderThickness="0" CornerRadius="2">
+                                                                <Border x:Name="PART_Indicator" Background="#2196F3" HorizontalAlignment="Left" CornerRadius="2"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </ProgressBar.Template>
+                                                </ProgressBar>
+                                                <TextBlock Grid.Column="2" Name="FileProgressText" 
+                                                           Text="0.0%" 
+                                                           Foreground="#999" Margin="8,0,0,0"
+                                                           FontFamily="Consolas" FontSize="10"
+                                                           VerticalAlignment="Center"/>
+                                            </Grid>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="当前文件用时:"
+                                                           Foreground="#999"
+                                                           Margin="0,0,8,0"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="10"/>
+                                                <TextBlock Name="FileElapsedTimeText"
+                                                           Text="00:00"
+                                                           Foreground="#999"
+                                                           FontFamily="Consolas"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Text="   预计总用时:"
+                                                           Foreground="#999"
+                                                           Margin="12,0,8,0"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="10"/>
+                                                <TextBlock Name="FileEstimatedTotalTimeText"
+                                                           Text="--:--"
+                                                           Foreground="#999"
+                                                           FontFamily="Consolas"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Text="   预计剩余:"
+                                                           Foreground="#999"
+                                                           Margin="12,0,8,0"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="10"/>
+                                                <TextBlock Name="FileEstimatedRemainingTimeText"
+                                                           Text="--:--"
+                                                           Foreground="#999"
+                                                           FontFamily="Consolas"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </StackPanel>
                                     </StackPanel>
                                 </Border>
                                 
