@@ -521,7 +521,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="视频编码:" FontWeight="Bold" FontSize="11"/>
-                                <TextBlock Grid.Column="1" Text="{Binding VideoCodec}" FontSize="11"/>
+                                <TextBlock Grid.Column="1" Text="{Binding VideoCodecWithFormat}" FontSize="11"/>
                             </Grid>
 
                             <Grid Margin="0,6">
@@ -539,7 +539,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="音频编码:" FontWeight="Bold" FontSize="11"/>
-                                <TextBlock Grid.Column="1" Text="{Binding AudioCodec}" FontSize="11"/>
+                                <TextBlock Grid.Column="1" Text="{Binding AudioCodecWithFormat}" FontSize="11"/>
                             </Grid>
 
                             <Grid Margin="0,6">

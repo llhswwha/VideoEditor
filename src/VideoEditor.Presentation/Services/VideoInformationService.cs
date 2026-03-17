@@ -147,6 +147,20 @@ namespace VideoEditor.Presentation.Services
                             videoFile.Duration = TimeSpan.FromSeconds(durationSeconds);
                         }
                     }
+                    // 尝试获取容器/格式名（例如 mp4, mov 等）
+                    if (format.TryGetProperty("format_name", out var formatNameElement))
+                    {
+                        var formatName = formatNameElement.GetString();
+                        if (!string.IsNullOrEmpty(formatName))
+                        {
+                            // ffprobe 有时返回以逗号分隔的多个格式名，取第一个
+                            var first = formatName.Split(',').FirstOrDefault();
+                            if (!string.IsNullOrEmpty(first))
+                            {
+                                videoFile.ContainerFormat = first;
+                            }
+                        }
+                    }
                 }
 
                 // 解析流信息

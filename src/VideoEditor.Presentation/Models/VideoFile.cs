@@ -19,6 +19,7 @@ namespace VideoEditor.Presentation.Models
         private int _height;
         private string _videoCodec = string.Empty;
         private string _audioCodec = string.Empty;
+        private string _containerFormat = string.Empty;
         private string _videoBitrate = string.Empty;
         private string _audioBitrate = string.Empty;
         private int _audioChannels;
@@ -151,6 +152,7 @@ namespace VideoEditor.Presentation.Models
             {
                 _videoCodec = value;
                 OnPropertyChanged(nameof(VideoCodec));
+                OnPropertyChanged(nameof(VideoCodecWithFormat));
             }
         }
 
@@ -164,8 +166,34 @@ namespace VideoEditor.Presentation.Models
             {
                 _audioCodec = value;
                 OnPropertyChanged(nameof(AudioCodec));
+                OnPropertyChanged(nameof(AudioCodecWithFormat));
             }
         }
+
+        /// <summary>
+        /// 容器/格式名（例如 mp4, mov 等）
+        /// </summary>
+        public string ContainerFormat
+        {
+            get => _containerFormat;
+            set
+            {
+                _containerFormat = value;
+                OnPropertyChanged(nameof(ContainerFormat));
+                OnPropertyChanged(nameof(VideoCodecWithFormat));
+                OnPropertyChanged(nameof(AudioCodecWithFormat));
+            }
+        }
+
+        /// <summary>
+        /// 视频编码并附带容器/格式信息
+        /// </summary>
+        public string VideoCodecWithFormat => string.IsNullOrWhiteSpace(ContainerFormat) ? VideoCodec : $"{VideoCodec} ({ContainerFormat})";
+
+        /// <summary>
+        /// 音频编码并附带容器/格式信息
+        /// </summary>
+        public string AudioCodecWithFormat => string.IsNullOrWhiteSpace(ContainerFormat) ? AudioCodec : $"{AudioCodec} ({ContainerFormat})";
 
         /// <summary>
         /// 视频比特率
