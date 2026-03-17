@@ -375,6 +375,16 @@
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
+                                        <GridViewColumn Width="160">
+                                            <GridViewColumn.Header>
+                                                <GridViewColumnHeader Tag="VideoCodec" Click="VideoFileListColumnHeader_Click">编码方式</GridViewColumnHeader>
+                                            </GridViewColumn.Header>
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding VideoCodecWithFormat}" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
                                         <GridViewColumn Width="95">
                                             <GridViewColumn.Header>
                                                 <GridViewColumnHeader Tag="Duration" Click="VideoFileListColumnHeader_Click">播放时长</GridViewColumnHeader>
@@ -417,7 +427,8 @@
                                             <MenuItem Header="按时长 (短→长)" Click="ContextMenu_SortByDurationAsc_Click"/>
                                         </MenuItem>
                                 <Separator/>
-                                        <MenuItem Header="删除" Click="ContextMenu_Remove_Click"/>
+                                        <MenuItem Header="移除" Click="ContextMenu_Remove_Click"/>
+                                        <MenuItem Header="删除文件" Click="ContextMenu_DeleteFromDisk_Click"/>
                                         <MenuItem Header="清空列表" Click="ClearAllButton_Click"/>
                             </ContextMenu>
                                 </ListView.ContextMenu>

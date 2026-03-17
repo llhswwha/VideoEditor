@@ -83,6 +83,131 @@ namespace VideoEditor.Presentation
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
+        /// <summary>
+        /// 等待文件可访问（非被占用）直到超时
+        /// </summary>
+        /// <param name="path">文件路径</param>
+        /// <param name="timeoutMs">超时时间（毫秒）</param>
+        /// <returns>如果文件可访问则返回 true，否则超时返回 false</returns>
+        private static async Task<bool> WaitForFileReleaseAsync(string path, int timeoutMs)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return true;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < timeoutMs)
+            {
+                try
+                {
+                    // 尝试以读写方式打开文件并立即关闭，若成功则认为未被占用
+                    using (var stream = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                    {
+                        stream.Close();
+                        return true;
+                    }
+                }
+                catch (IOException)
+                {
+                    // 文件被占用，等待并重试
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // 无权限访问，认为被占用或不可删除
+                }
+
+                await Task.Delay(200);
+            }
+
+            return false;
+        }
+
+        private async void ContextMenu_DeleteFromDisk_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var filesToDelete = _videoListViewModel.Files.Where(f => f.IsSelected).ToList();
+                if (filesToDelete.Count == 0 && _videoListViewModel.SelectedFile != null)
+                {
+                    filesToDelete.Add(_videoListViewModel.SelectedFile);
+                }
+
+                if (filesToDelete.Count == 0)
+                {
+                    MessageBox.Show(this, "请先选择要删除的文件。", "删除文件", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var count = filesToDelete.Count;
+                var msg = count == 1
+                    ? $"确定要将选中文件移入回收站吗？\n{filesToDelete[0].FilePath}"
+                    : $"确定要将这 {count} 个选中文件移入回收站吗？";
+
+                var result = MessageBox.Show(this, msg, "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+
+                // 如果当前正在播放的文件包含在要删除的列表中，先停止播放并释放资源
+                try
+                {
+                    if (_videoPlayerViewModel != null)
+                    {
+                        var currentPath = _videoPlayerViewModel.CurrentFilePath;
+                        if (!string.IsNullOrWhiteSpace(currentPath) && filesToDelete.Any(f => string.Equals(f.FilePath, currentPath, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            Services.DebugLogger.LogInfo($"删除操作: 当前播放文件在删除列表中，先停止并释放媒体: {currentPath}");
+                            _videoPlayerViewModel.ClearMedia();
+                            // 等待直到文件句柄被释放或超时
+                            var released = await WaitForFileReleaseAsync(currentPath, 5000);
+                            if (!released)
+                            {
+                                Services.DebugLogger.LogWarning($"删除操作: 等待释放文件句柄超时: {currentPath}");
+                                MessageBox.Show(this, $"无法释放正在播放文件的资源，删除失败: {currentPath}\n请稍后再试或关闭占用该文件的程序。", "删除失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                return;
+                            }
+                        }
+                    }
+                }
+                catch (Exception exStop)
+                {
+                    Services.DebugLogger.LogWarning($"在删除前停止播放时发生错误: {exStop.Message}");
+                }
+
+                // Use Microsoft.VisualBasic.FileIO to send to recycle bin
+                foreach (var vf in filesToDelete)
+                {
+                    try
+                    {
+                        if (string.IsNullOrWhiteSpace(vf.FilePath) || !File.Exists(vf.FilePath))
+                        {
+                            Services.DebugLogger.LogWarning($"文件不存在，跳过删除: {vf.FilePath}");
+                            continue;
+                        }
+
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(vf.FilePath,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+
+                        // 删除成功，从列表中移除
+                        _videoListViewModel.Files.Remove(vf);
+                    }
+                    catch (Exception exFile)
+                    {
+                        Services.DebugLogger.LogError($"删除文件失败: {vf.FilePath} - {exFile.Message}");
+                        MessageBox.Show(this, $"删除文件失败: {vf.FileName}\n{exFile.Message}", "删除失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+
+                // 更新状态
+                _videoListViewModel.StatusMessage = $"已删除 {filesToDelete.Count} 个文件 (移至回收站)";
+            }
+            catch (Exception ex)
+            {
+                Services.DebugLogger.LogError($"ContextMenu_DeleteFromDisk_Click 错误: {ex.Message}");
+                MessageBox.Show(this, $"执行删除时发生错误: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void RefreshRecentFoldersMenu()
         {
             try
@@ -360,6 +485,16 @@ namespace VideoEditor.Presentation
             OnPropertyChanged(nameof(IsPlayerInterfaceMode));
 
             ApplyInterfaceModeLayout();
+
+                // 注册删除文件命令的事件处理（在构造时确保可用）
+                try
+                {
+                    // Nothing to register here; handler wired from XAML. Keep this block to catch early errors.
+                }
+                catch (Exception ex)
+                {
+                    Services.DebugLogger.LogError($"初始化删除文件处理程序时出错: {ex.Message}");
+                }
             UpdatePlayerModeWindowSizing();
             UpdatePlayerLayoutForMode();
             ApplyOutputPanelVisibility();
@@ -786,6 +921,12 @@ namespace VideoEditor.Presentation
                 Services.DebugLogger.LogInfo("设置 DataContext...");
                 // 设置DataContext
                 DataContext = this;
+
+                // Ensure video list view model is accessible
+                if (_videoListViewModel == null)
+                {
+                    Services.DebugLogger.LogWarning("VideoListViewModel is null in MainWindow constructor");
+                }
 
                 // 默认应用剪辑模式布局
                 ApplyInterfaceModeLayout();
