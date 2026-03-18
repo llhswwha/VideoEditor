@@ -83,6 +83,9 @@ namespace VideoEditor.Presentation
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
+        // Duplicate BtnStartTranscode_Click implementation and helper were removed.
+        // Kept the single canonical BtnStartTranscode_Click implementation later in the file.
+
         /// <summary>
         /// 等待文件可访问（非被占用）直到超时
         /// </summary>
@@ -2140,6 +2143,115 @@ namespace VideoEditor.Presentation
                 {
                     Services.DebugLogger.LogWarning($"设置输出路径为导入文件夹失败: {ex.Message}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// 打开文件夹（清空列表后添加）
+        /// </summary>
+        private async void OpenFolderMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                using var dlg = new Forms.FolderBrowserDialog
+                {
+                    Description = "选择要打开的文件夹（将清空当前列表并加载该文件夹）",
+                    ShowNewFolderButton = true
+                };
+
+                if (dlg.ShowDialog() != Forms.DialogResult.OK)
+                    return;
+
+                var folder = dlg.SelectedPath;
+                // 清空当前列表
+                try
+                {
+                    _videoListViewModel.ClearAllFiles();
+                }
+                catch (Exception exClear)
+                {
+                    Services.DebugLogger.LogWarning($"清空文件列表失败: {exClear.Message}");
+                }
+
+                await _videoListViewModel.AddFolderAsync(folder);
+                AddToRecentFolders(folder);
+
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(folder) && OutputPathBox != null)
+                    {
+                        OutputPathBox.Text = folder;
+                        UpdateDiskSpace();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Services.DebugLogger.LogWarning($"设置输出路径为打开的文件夹失败: {ex.Message}");
+                }
+
+                _videoListViewModel.StatusMessage = $"已打开并加载文件夹: {folder}";
+            }
+            catch (Exception ex)
+            {
+                Services.DebugLogger.LogError($"OpenFolderMenuItem_Click 错误: {ex.Message}");
+                MessageBox.Show(this, $"打开文件夹失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// 刷新文件列表按钮（尝试重新加载当前输出路径或最近文件夹）
+        /// </summary>
+        private async void RefreshFileListButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string? folder = null;
+
+                if (OutputPathBox != null && !string.IsNullOrWhiteSpace(OutputPathBox.Text) && Directory.Exists(OutputPathBox.Text))
+                {
+                    folder = OutputPathBox.Text;
+                }
+
+                if (string.IsNullOrWhiteSpace(folder))
+                {
+                    // 尝试使用最近文件夹中的第一个真实条目
+                    var recent = _recentFolders.FirstOrDefault(f => !f.IsPlaceholder);
+                    if (recent != null)
+                    {
+                        folder = recent.FilePath;
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(folder) && _videoListViewModel.Files.Count > 0)
+                {
+                    // 使用当前选中文件所在目录或第一项目录
+                    var candidate = _videoListViewModel.SelectedFile ?? _videoListViewModel.Files.FirstOrDefault();
+                    if (candidate != null && !string.IsNullOrWhiteSpace(candidate.FilePath))
+                    {
+                        var dir = Path.GetDirectoryName(candidate.FilePath);
+                        if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+                        {
+                            folder = dir;
+                        }
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+                {
+                    Services.ToastNotification.ShowInfo("找不到可用于刷新的文件夹");
+                    return;
+                }
+
+                // 重新加载
+                _videoListViewModel.ClearAllFiles();
+                await _videoListViewModel.AddFolderAsync(folder);
+                AddToRecentFolders(folder);
+                Services.ToastNotification.ShowSuccess("文件列表已刷新");
+            }
+            catch (Exception ex)
+            {
+                Services.DebugLogger.LogError($"刷新文件列表失败: {ex.Message}");
+                Services.ToastNotification.ShowError($"刷新文件列表失败: {ex.Message}");
             }
         }
 
@@ -13666,7 +13778,73 @@ namespace VideoEditor.Presentation
                 parameters.HardwareAcceleration = checkHardwareAccel?.IsChecked ?? false;
                 parameters.KeepMetadata = checkKeepMetadata?.IsChecked ?? true;
 
-                Services.DebugLogger.LogInfo($"转码参数获取成功: 模式={parameters.Mode}, 格式={parameters.OutputFormat}, 视频编码={parameters.VideoCodec}, 音频编码={parameters.AudioCodec}, CRF={parameters.CRF}, 音频比特率={parameters.AudioBitrate}, 双通道={parameters.DualPass}, 硬件加速={parameters.HardwareAcceleration}, 保留元数据={parameters.KeepMetadata}");
+                // 解析分辨率设置
+                var cboResolutionPreset = FindName("cboResolutionPreset") as ComboBox;
+                var chkUsePercentage = FindName("chkUsePercentage") as CheckBox;
+                var txtResolutionPercent = FindName("txtResolutionPercent") as TextBox;
+                var txtCustomWidth = FindName("txtCustomWidth") as TextBox;
+                var txtCustomHeight = FindName("txtCustomHeight") as TextBox;
+                var chkEnforceEven = FindName("chkEnforceEven") as CheckBox;
+
+                int? outW = null, outH = null;
+                string resolutionText = "与原始相同";
+
+                if (cboResolutionPreset?.SelectedItem is ComboBoxItem preset)
+                {
+                    var txt = preset.Content?.ToString() ?? "原始";
+                    if (!txt.Contains("原始") && txt.Contains("x"))
+                    {
+                        var part = txt.Split(' ')[0];
+                        var parts = part.Split('x');
+                        if (parts.Length == 2 && int.TryParse(parts[0], out var w) && int.TryParse(parts[1], out var h))
+                        {
+                            outW = w; outH = h; resolutionText = $"{w}x{h}";
+                        }
+                    }
+                    else if (txt.Contains("自定义"))
+                    {
+                        if (chkUsePercentage?.IsChecked == true)
+                        {
+                            if (int.TryParse(txtResolutionPercent?.Text, out var pct) && pct > 0)
+                            {
+                                var first = _videoListViewModel?.Files.FirstOrDefault(f => f.IsSelected);
+                                if (first != null && first.Width > 0 && first.Height > 0)
+                                {
+                                    var w = Math.Max(1, (first.Width * pct) / 100);
+                                    var h = Math.Max(1, (first.Height * pct) / 100);
+                                    outW = w; outH = h; resolutionText = $"{w}x{h}";
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (int.TryParse(txtCustomWidth?.Text, out var w) && int.TryParse(txtCustomHeight?.Text, out var h))
+                            {
+                                outW = w; outH = h; resolutionText = $"{w}x{h}";
+                            }
+                        }
+                    }
+                }
+
+                if (chkEnforceEven?.IsChecked == true && outW.HasValue && outH.HasValue)
+                {
+                    if (outW % 2 != 0) outW++;
+                    if (outH % 2 != 0) outH++;
+                    resolutionText = $"{outW}x{outH}";
+                }
+
+                parameters.OutputWidth = outW;
+                parameters.OutputHeight = outH;
+                parameters.EnforceEven = chkEnforceEven?.IsChecked ?? true;
+
+                // 更新 UI 计算显示
+                var lblComputedResolution = FindName("lblComputedResolution") as TextBlock;
+                if (lblComputedResolution != null)
+                {
+                    lblComputedResolution.Text = resolutionText;
+                }
+
+                Services.DebugLogger.LogInfo($"转码参数获取成功: 模式={parameters.Mode}, 格式={parameters.OutputFormat}, 分辨率={resolutionText}, 视频编码={parameters.VideoCodec}, 音频编码={parameters.AudioCodec}, CRF={parameters.CRF}, 音频比特率={parameters.AudioBitrate}, 双通道={parameters.DualPass}, 硬件加速={parameters.HardwareAcceleration}, 保留元数据={parameters.KeepMetadata}");
 
                 return parameters;
             }
@@ -13710,6 +13888,11 @@ namespace VideoEditor.Presentation
                 };
             }).ToList();
 
+            // 解析并展示目标分辨率信息（若参数中设置了宽高）
+            var resolutionText = (parameters.OutputWidth.HasValue && parameters.OutputHeight.HasValue)
+                ? $"{parameters.OutputWidth}x{parameters.OutputHeight}"
+                : "与原始相同";
+
             var config = new Services.FfmpegBatchProcessor.BatchConfig
             {
                 OperationName = "批量转码",
@@ -13721,6 +13904,7 @@ namespace VideoEditor.Presentation
                     $"📝 文件命名: {settings.FileNamingMode}",
                     $"🎬 转码模式: {GetTranscodeModeName(parameters.Mode)}",
                     $"📦 输出格式: {parameters.OutputFormat}",
+                    $"📐 分辨率: {resolutionText}",
                     $"🎥 视频编码: {parameters.VideoCodec}",
                     $"🎵 音频编码: {parameters.AudioCodec}",
                     $"🎯 CRF值: {parameters.CRF}",

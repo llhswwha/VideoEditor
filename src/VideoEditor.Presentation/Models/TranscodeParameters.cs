@@ -77,6 +77,21 @@ namespace VideoEditor.Presentation.Models
         /// 是否保留元数据
         /// </summary>
         public bool KeepMetadata { get; set; } = true;
+
+        /// <summary>
+        /// 输出宽度 (像素)，若为 null 表示不改变分辨率
+        /// </summary>
+        public int? OutputWidth { get; set; }
+
+        /// <summary>
+        /// 输出高度 (像素)，若为 null 表示不改变分辨率
+        /// </summary>
+        public int? OutputHeight { get; set; }
+
+        /// <summary>
+        /// 是否强制为偶数（多数编码器要求偶数宽高）
+        /// </summary>
+        public bool EnforceEven { get; set; } = true;
     }
 }
 

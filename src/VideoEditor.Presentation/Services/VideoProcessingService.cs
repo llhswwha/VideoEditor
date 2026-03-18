@@ -663,7 +663,6 @@ namespace VideoEditor.Presentation.Services
                 var customParams = customArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 args.AddRange(customParams);
             }
-
             // 通用参数
             args.AddRange(new[] { "-movflags", "+faststart", "-y", $"\"{outputPath}\"" });
 
@@ -763,6 +762,9 @@ namespace VideoEditor.Presentation.Services
                 var customParams = customArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 args.AddRange(customParams);
             }
+
+            // 分辨率处理：此方法（BuildRemoveWatermarkArguments）不支持 OutputWidth/OutputHeight/EnforceEven
+            // 这些是转码参数，不应出现在 RemoveWatermark 参数集中。若需要缩放，应在调用处对输出尺寸做处理。
 
             // 通用参数
             args.AddRange(new[] { "-movflags", "+faststart", "-y", $"\"{outputPath}\"" });
@@ -1787,12 +1789,57 @@ namespace VideoEditor.Presentation.Services
                 "-i", $"\"{inputPath}\""
             };
 
+            // 收集视频滤镜（例如 scale）
+            var filters = new List<string>();
+            if (parameters != null)
+            {
+                try
+                {
+                    if (parameters.OutputWidth > 0 || parameters.OutputHeight > 0)
+                    {
+                        var w = parameters.OutputWidth > 0 ? parameters.OutputWidth : -1;
+                        var h = parameters.OutputHeight > 0 ? parameters.OutputHeight : -1;
+
+                        // 强制偶数尺寸（若启用）
+                        if (parameters.EnforceEven)
+                        {
+                            if (w > 0 && (w % 2) == 1) w++;
+                            if (h > 0 && (h % 2) == 1) h++;
+                        }
+
+                        // 对于保持宽高比时，使用 -2 让 ffmpeg 自动计算并保持偶数
+                        var wStr = w > 0 ? w.ToString() : "-2";
+                        var hStr = h > 0 ? h.ToString() : "-2";
+
+                        filters.Add($"scale={wStr}:{hStr}");
+                    }
+                }
+                catch { /* 保持容错，不要因解析失败导致转码中断 */ }
+            }
+
             // 根据转码模式设置参数
             switch (parameters.Mode)
             {
                 case Models.TranscodeMode.Fast:
                     // 快速模式：使用 -c copy，速度快
-                    args.AddRange(new[] { "-c", "copy" });
+                    // 如果请求了滤镜（如缩放），复制模式无法与滤镜并存，强制改为重新编码
+                    if (filters.Count == 0)
+                    {
+                        args.AddRange(new[] { "-c", "copy" });
+                    }
+                    else
+                    {
+                        // 强制重新编码为用户选择或默认的编码器
+                        var forcedVideoCodec = GetVideoCodecForFFmpeg(parameters.VideoCodec, Models.TranscodeMode.Standard, parameters.HardwareAcceleration);
+                        if (string.Equals(forcedVideoCodec, "copy", StringComparison.OrdinalIgnoreCase))
+                        {
+                            forcedVideoCodec = "libx264";
+                        }
+                        args.AddRange(new[] { "-c:v", forcedVideoCodec, "-preset", "faster", "-crf", parameters.CRF.ToString() });
+                        // 将滤镜加入参数中
+                        args.Add("-vf");
+                        args.Add($"\"{string.Join(",", filters)}\"");
+                    }
                     break;
 
                 case Models.TranscodeMode.Standard:
@@ -1805,13 +1852,21 @@ namespace VideoEditor.Presentation.Services
                     
                     if (parameters.HardwareAcceleration && (videoCodec.StartsWith("h264_nvenc") || videoCodec.StartsWith("hevc_nvenc")))
                     {
-                        // 硬件加速编码
-                        args.AddRange(new[] { "-c:v", videoCodec, "-preset", preset });
+                        // 硬件加速编码 (NVENC)
+                        // 注意: NVIDIA NVENC 的预设集合不同于 libx264/libx265，某些值（例如 "faster"）在 NVENC 中不可用。
+                        // 将常见的 libx 预设名映射为 NVENC 支持的近似值，避免传递无效的预设导致 FFmpeg 失败。
+                        var nvencPreset = preset;
+                        if (preset.Equals("faster", StringComparison.OrdinalIgnoreCase))
+                        {
+                            nvencPreset = "fast"; // map libx's "faster" -> NVENC "fast"
+                        }
+
+                        args.AddRange(new[] { "-c:v", videoCodec, "-preset", nvencPreset });
                         if (parameters.Mode == Models.TranscodeMode.HighQuality)
                         {
                             args.AddRange(new[] { "-cq", parameters.CRF.ToString() });
                         }
-                        else
+
                         {
                             args.AddRange(new[] { "-b:v", GetBitrateForMode(parameters.Mode) });
                         }
@@ -1820,6 +1875,38 @@ namespace VideoEditor.Presentation.Services
                     {
                         // CPU编码
                         args.AddRange(new[] { "-c:v", videoCodec, "-preset", preset, "-crf", parameters.CRF.ToString() });
+                    }
+
+                    // 如果有视频滤镜（例如 scale），在设置音频之前加入 -vf 参数
+                    if (filters.Count > 0)
+                    {
+                        // 如果用户选择了复制编码，复制模式不支持滤镜，强制选择 libx264 重新编码
+                        if (args.Contains("-c") || args.Contains("-c:v") && args.Contains("copy"))
+                        {
+                            // 确保使用合理的视频编码器
+                            if (!args.Contains("-c:v") || args[args.IndexOf("-c:v") + 1].Equals("copy", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // 移除 copy 并改为 libx264
+                                // 查找并替换简单处理
+                                for (int i = 0; i < args.Count - 1; i++)
+                                {
+                                    if (string.Equals(args[i], "-c", StringComparison.OrdinalIgnoreCase) && string.Equals(args[i + 1], "copy", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        args[i] = "-c:v";
+                                        args[i + 1] = "libx264";
+                                    }
+                                    if (string.Equals(args[i], "-c:v", StringComparison.OrdinalIgnoreCase) && string.Equals(args[i + 1], "copy", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        args[i + 1] = "libx264";
+                                    }
+                                }
+                                // 添加默认 preset/crf
+                                args.AddRange(new[] { "-preset", "faster", "-crf", parameters.CRF.ToString() });
+                            }
+                        }
+
+                        args.Add("-vf");
+                        args.Add($"\"{string.Join(",", filters)}\"");
                     }
 
                     // 双通道编码

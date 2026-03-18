@@ -153,7 +153,8 @@
             <!-- 文件菜单 -->
             <MenuItem Header="文件(_F)" FontSize="13">
                 <MenuItem Header="📂 打开文件..." InputGestureText="Ctrl+O" Click="AddFilesButton_Click"/>
-                <MenuItem Header="📁 打开文件夹..." InputGestureText="Ctrl+Shift+O" Click="AddFolderButton_Click">
+                <MenuItem Header="📁 打开文件夹..." Click="OpenFolderMenuItem_Click"/>
+                <MenuItem Header="📁 添加文件夹..." InputGestureText="Ctrl+Shift+O" Click="AddFolderButton_Click">
                     <MenuItem.ContextMenu>
                         <ContextMenu />
                     </MenuItem.ContextMenu>
@@ -300,8 +301,9 @@
                                 BorderBrush="{DynamicResource Brush.PanelBorder}"
                                 BorderThickness="0,0,0,1">
                                     <Grid>
-                                        <Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0"
@@ -319,6 +321,16 @@
                                     <Run Text=" | 选中: "/>
                                     <Run Text="{Binding VideoListViewModel.SelectedFileCount, Mode=OneWay}"/>
                                 </TextBlock>
+                                <!-- 刷新按钮：清空列表并重新加入最近的文件夹 -->
+                                <Button Grid.Column="2"
+                                        Name="RefreshFileListButton"
+                                        Content="🔄"
+                                        Width="28"
+                                        Height="28"
+                                        Margin="6,8,8,8"
+                                        ToolTip="刷新文件列表：清空并重新加入最近的文件夹"
+                                        Click="RefreshFileListButton_Click"
+                                        Style="{StaticResource ButtonInfoStyle}"/>
                                     </Grid>
                         </Border>
                         
@@ -2126,6 +2138,57 @@
                                             <CheckBox Name="CheckBoxDualPassTranscode" Content="双通道编码（更高质量）" FontSize="12" Margin="0,8,0,4"/>
                                             <CheckBox Name="CheckBoxHardwareAccelTranscode" Content="硬件加速（GPU编码）" FontSize="12" Margin="0,4"/>
                                             <CheckBox Name="CheckBoxKeepMetadataTranscode" Content="保留元数据" IsChecked="True" FontSize="12" Margin="0,4"/>
+                                        </StackPanel>
+                                    </GroupBox>
+
+                                    <!-- 分辨率设置 -->
+                                    <GroupBox Header="📐 分辨率设置" Margin="0,0,0,12" FontSize="13">
+                                        <StackPanel Margin="8">
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="预设分辨率" FontSize="12" Margin="0,0,0,6"/>
+                                                    <ComboBox Name="cboResolutionPreset" SelectedIndex="0" FontSize="12" Height="28">
+                                                        <ComboBoxItem Content="原始"/>
+                                                        <ComboBoxItem Content="3840x2160 (4K)"/>
+                                                        <ComboBoxItem Content="1920x1080 (1080p)"/>
+                                                        <ComboBoxItem Content="1280x720 (720p)"/>
+                                                        <ComboBoxItem Content="854x480 (480p)"/>
+                                                        <ComboBoxItem Content="640x360 (360p)"/>
+                                                        <ComboBoxItem Content="自定义"/>
+                                                    </ComboBox>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="12,0,0,0">
+                                                    <CheckBox Name="chkUsePercentage" Content="按百分比" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <TextBox Name="txtResolutionPercent" Width="60" Text="100" FontFamily="Consolas" FontSize="12" VerticalContentAlignment="Center"/>
+                                                    <TextBlock Text="%" VerticalAlignment="Center" Margin="4,0,0,0" Foreground="{DynamicResource Brush.TextSecondary}"/>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                    <ColumnDefinition Width="16"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="宽:" VerticalAlignment="Center" FontSize="12"/>
+                                                <TextBox Grid.Column="1" Name="txtCustomWidth" Text="1920" MaxLength="5" FontFamily="Consolas" FontSize="12" Height="28" VerticalContentAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text=""/>
+                                                <TextBlock Grid.Column="3" Text="高:" VerticalAlignment="Center" FontSize="12"/>
+                                                <TextBox Grid.Column="4" Name="txtCustomHeight" Text="1080" MaxLength="5" FontFamily="Consolas" FontSize="12" Height="28" VerticalContentAlignment="Center"/>
+                                            </Grid>
+
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4">
+                                                <CheckBox Name="chkEnforceEven" Content="调整为偶数" IsChecked="True" FontSize="12" Margin="0,0,12,0"/>
+                                                <TextBlock Text="计算结果: " VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextSecondary}"/>
+                                                <TextBlock Name="lblComputedResolution" Text="-" VerticalAlignment="Center" FontFamily="Consolas" Margin="6,0,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock Text="提示: 若使用百分比，将基于当前视频分辨率计算。" FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,6,0,0"/>
                                         </StackPanel>
                                     </GroupBox>
                                     
