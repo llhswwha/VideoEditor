@@ -92,6 +92,16 @@ namespace VideoEditor.Presentation.Models
         /// 是否强制为偶数（多数编码器要求偶数宽高）
         /// </summary>
         public bool EnforceEven { get; set; } = true;
+
+        /// <summary>
+        /// 是否使用百分比缩放（基于源分辨率的百分比），若为 true 则 UI/逻辑应根据 Percentage 计算 OutputWidth/OutputHeight
+        /// </summary>
+        public bool UsePercentage { get; set; } = false;
+
+        /// <summary>
+        /// 百分比缩放值（默认 80 表示 80%）
+        /// </summary>
+        public double Percentage { get; set; } = 80.0;
     }
 }
 

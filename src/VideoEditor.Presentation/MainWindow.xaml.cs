@@ -13789,7 +13789,28 @@ namespace VideoEditor.Presentation
                 int? outW = null, outH = null;
                 string resolutionText = "与原始相同";
 
-                if (cboResolutionPreset?.SelectedItem is ComboBoxItem preset)
+                parameters.EnforceEven = chkEnforceEven?.IsChecked ?? true;
+                parameters.UsePercentage = chkUsePercentage?.IsChecked == true;
+
+                if (parameters.UsePercentage)
+                {
+                    parameters.Percentage = double.TryParse(txtResolutionPercent?.Text, out var pct) && pct > 0
+                        ? pct
+                        : 80d;
+
+                    var previewFile = _videoListViewModel?.Files.FirstOrDefault(f => f.IsSelected)
+                        ?? _videoListViewModel?.SelectedFile;
+                    var previewParameters = ResolveTranscodeParametersForFile(parameters, previewFile);
+
+                    outW = previewParameters.OutputWidth;
+                    outH = previewParameters.OutputHeight;
+
+                    resolutionText = outW.HasValue && outH.HasValue
+                        ? $"{outW}x{outH} ({parameters.Percentage:0.#}%)"
+                        : $"{parameters.Percentage:0.#}%（按每个源文件分别计算）";
+                }
+
+                if (!parameters.UsePercentage && cboResolutionPreset?.SelectedItem is ComboBoxItem preset)
                 {
                     var txt = preset.Content?.ToString() ?? "原始";
                     if (!txt.Contains("原始") && txt.Contains("x"))
@@ -13803,39 +13824,26 @@ namespace VideoEditor.Presentation
                     }
                     else if (txt.Contains("自定义"))
                     {
-                        if (chkUsePercentage?.IsChecked == true)
+                        if (int.TryParse(txtCustomWidth?.Text, out var w) && int.TryParse(txtCustomHeight?.Text, out var h))
                         {
-                            if (int.TryParse(txtResolutionPercent?.Text, out var pct) && pct > 0)
-                            {
-                                var first = _videoListViewModel?.Files.FirstOrDefault(f => f.IsSelected);
-                                if (first != null && first.Width > 0 && first.Height > 0)
-                                {
-                                    var w = Math.Max(1, (first.Width * pct) / 100);
-                                    var h = Math.Max(1, (first.Height * pct) / 100);
-                                    outW = w; outH = h; resolutionText = $"{w}x{h}";
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (int.TryParse(txtCustomWidth?.Text, out var w) && int.TryParse(txtCustomHeight?.Text, out var h))
-                            {
-                                outW = w; outH = h; resolutionText = $"{w}x{h}";
-                            }
+                            outW = w; outH = h; resolutionText = $"{w}x{h}";
                         }
                     }
                 }
 
-                if (chkEnforceEven?.IsChecked == true && outW.HasValue && outH.HasValue)
+                if (parameters.EnforceEven && outW.HasValue && outH.HasValue)
                 {
                     if (outW % 2 != 0) outW++;
                     if (outH % 2 != 0) outH++;
                     resolutionText = $"{outW}x{outH}";
+                    if (parameters.UsePercentage)
+                    {
+                        resolutionText += $" ({parameters.Percentage:0.#}%)";
+                    }
                 }
 
                 parameters.OutputWidth = outW;
                 parameters.OutputHeight = outH;
-                parameters.EnforceEven = chkEnforceEven?.IsChecked ?? true;
 
                 // 更新 UI 计算显示
                 var lblComputedResolution = FindName("lblComputedResolution") as TextBlock;
@@ -13853,6 +13861,68 @@ namespace VideoEditor.Presentation
                 Services.DebugLogger.LogError($"获取转码参数失败: {ex.Message}\n{ex.StackTrace}");
                 return null;
             }
+        }
+
+        private Models.TranscodeParameters CloneTranscodeParameters(Models.TranscodeParameters parameters)
+        {
+            return new Models.TranscodeParameters
+            {
+                Mode = parameters.Mode,
+                OutputFormat = parameters.OutputFormat,
+                VideoCodec = parameters.VideoCodec,
+                AudioCodec = parameters.AudioCodec,
+                CRF = parameters.CRF,
+                AudioBitrate = parameters.AudioBitrate,
+                DualPass = parameters.DualPass,
+                HardwareAcceleration = parameters.HardwareAcceleration,
+                KeepMetadata = parameters.KeepMetadata,
+                OutputWidth = parameters.OutputWidth,
+                OutputHeight = parameters.OutputHeight,
+                EnforceEven = parameters.EnforceEven,
+                UsePercentage = parameters.UsePercentage,
+                Percentage = parameters.Percentage
+            };
+        }
+
+        private Models.TranscodeParameters ResolveTranscodeParametersForFile(Models.TranscodeParameters parameters, Models.VideoFile? inputFile)
+        {
+            var resolved = CloneTranscodeParameters(parameters);
+            if (!resolved.UsePercentage)
+            {
+                return resolved;
+            }
+
+            if (inputFile == null || inputFile.Width <= 0 || inputFile.Height <= 0)
+            {
+                resolved.OutputWidth = null;
+                resolved.OutputHeight = null;
+                return resolved;
+            }
+
+            var width = Math.Max(1, (int)Math.Round(inputFile.Width * resolved.Percentage / 100d, MidpointRounding.AwayFromZero));
+            var height = Math.Max(1, (int)Math.Round(inputFile.Height * resolved.Percentage / 100d, MidpointRounding.AwayFromZero));
+
+            if (resolved.EnforceEven)
+            {
+                if ((width % 2) != 0) width++;
+                if ((height % 2) != 0) height++;
+            }
+
+            resolved.OutputWidth = width;
+            resolved.OutputHeight = height;
+            return resolved;
+        }
+
+        private string GetTranscodeResolutionSummary(Models.TranscodeParameters parameters)
+        {
+            if (parameters.UsePercentage)
+            {
+                return $"{parameters.Percentage:0.#}%（按每个源文件原始分辨率分别计算）";
+            }
+
+            return (parameters.OutputWidth.HasValue && parameters.OutputHeight.HasValue)
+                ? $"{parameters.OutputWidth}x{parameters.OutputHeight}"
+                : "与原始相同";
         }
 
         /// <summary>
@@ -13877,8 +13947,9 @@ namespace VideoEditor.Presentation
                     Description = $"转码: {Path.GetFileName(inputFile.FilePath)}\r\n📁 输出文件: {outputFileName}",
                     ExecuteTask = async (input, output, progress, ct) =>
                     {
+                        var resolvedParameters = ResolveTranscodeParametersForFile(parameters, inputFile);
                         var result = await _videoProcessingService.TranscodeAsync(
-                            input, output, parameters,
+                            input, output, resolvedParameters,
                             settings.CustomArgs,
                             progress,
                             ct);
@@ -13889,9 +13960,7 @@ namespace VideoEditor.Presentation
             }).ToList();
 
             // 解析并展示目标分辨率信息（若参数中设置了宽高）
-            var resolutionText = (parameters.OutputWidth.HasValue && parameters.OutputHeight.HasValue)
-                ? $"{parameters.OutputWidth}x{parameters.OutputHeight}"
-                : "与原始相同";
+            var resolutionText = GetTranscodeResolutionSummary(parameters);
 
             var config = new Services.FfmpegBatchProcessor.BatchConfig
             {
@@ -13950,10 +14019,11 @@ namespace VideoEditor.Presentation
 
                 try
                 {
+                    var resolvedParameters = ResolveTranscodeParametersForFile(parameters, inputFile);
                     var args = _videoProcessingService.BuildTranscodeArguments(
                         inputFile.FilePath,
                         outputPath,
-                        parameters,
+                        resolvedParameters,
                         settings.CustomArgs);
 
                     commands.Add(new Services.FfmpegCommandPreviewService.CommandItem
